@@ -942,6 +942,21 @@ function PMFSendMessage(
         }
     }
 
+    //IPanchenko === НАЧАЛО ИЗМЕНЕНИЙ ДЛЯ ЛОГИРОВАНИЯ SMTP ===
+    //error_log("BEFORE config: ".json_encode($config)); //IPanchenko
+
+    // Пытаемся принудительно включить дебаг в конфиге, если он передан как массив
+    if (is_array($config) && !isset($config['SMTPDebug'])) {
+        $config['SMTPDebug'] = 2; // 2 = сообщения клиента и сервера
+        $config['Debugoutput'] = 'echo';
+    }
+    error_log("AFTER config: ".json_encode($config)); //IPanchenko
+
+    // Включаем буферизацию вывода PHP, чтобы перехватить echo от SMTP
+    ob_start();
+
+    //IPanchenko === КОНЕЦ ПЕРВОЙ ЧАСТИ ВСТАВКИ ===
+
     G::LoadClass("wsBase");
 
     $ws = new wsBase();
@@ -959,6 +974,39 @@ function PMFSendMessage(
         $delIndex,
         $config
     );
+
+    //IPanchenko === НАЧАЛО ВТОРОЙ ЧАСТИ ВСТАВКИ (Сразу после отправки) ===
+
+    // Забираем из буфера всё, что успел напечатать PHPMailer в процессе $ws->sendMessage()
+    $smtpLogText = ob_get_clean();
+
+    // Формируем путь к лог-файлу внутри текущего воркспейса
+    $logDir = PATH_DATA . 'log/';
+    $logFile = $logDir . 'smtp_debug.log';
+    error_log("logFile: ". $logFile); //IPanchenko
+
+    // Формируем сообщение для лога
+    //$logMessage = "==================================================\n";
+    //$logMessage .= "data/time: " . date('Y-m-d H:i:s') . "\n";
+    //$logMessage .= "caseId: " . $caseId . " | sSubject: " . $sSubject . "\n";
+    //$logMessage .= "status_code: " . ($result->status_code == 0 ? "Ok" : "Error") . "\n";
+    $logMessage = "data/time: " . date('Y-m-d H:i:s') . 
+                  " | status_code: " . ($result->status_code == 0 ? "Ok" : "Error") . 
+                  " | caseId: " . $caseId . 
+                  " | sSubject: " . $sSubject . 
+                  "\n";
+
+    if (!empty($smtpLogText)) {
+        $logMessage .= "--- SMTP DIALOGUE ---\n" . $smtpLogText . "\n";
+    }
+    //$logMessage .= "==================================================\n\n";
+
+    // Записываем данные в файл лога
+    if (is_dir($logDir)) {
+        file_put_contents($logFile, $logMessage, FILE_APPEND);
+    }
+
+    //IPanchenko === КОНЕЦ ВТОРОЙ ЧАСТИ ВСТАВКИ ===
 
     if ($result->status_code == 0) {
         return 1;
