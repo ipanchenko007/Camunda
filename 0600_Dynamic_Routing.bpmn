@@ -61,6 +61,7 @@ if (log.isDebugEnabled()) {
         <bpmn:outgoing>Flow_ToParallel</bpmn:outgoing>
       </bpmn:exclusiveGateway>
       <bpmn:userTask id="Task_SingleOrGroup" name="${currentStep.name}" camunda:dueDate="#{extensions.timeService.addCalendarDaysTillEndOfDay(currentStep.working_days)}">
+        <bpmn:documentation>${S(baseDocument).prop("data").prop("typeTitle").stringValue()} № ${S(baseDocument).prop("data").prop("projectNumber").stringValue()}</bpmn:documentation>
         <bpmn:extensionElements>
           <camunda:taskListener event="create">
             <camunda:script scriptFormat="groovy">// В Task Listener объект контекста процесса извлекается через task.getExecution()
@@ -82,7 +83,7 @@ if (step != null &amp;&amp; step.actions != null) {
           </camunda:inputOutput>
           <camunda:executionListener event="start">
             <camunda:script scriptFormat="groovy">//Смотрим пример формирования в процессе "Отправка уведомлений задачи пользователя" (UserTaskNotificationDelegateProcess)
-execution.setVariable('messageProperties', [errorMessage: 'здесь будет сообщение об ошибке'])</camunda:script>
+execution.setVariable('messageProperties', [commentText: 'Сюда добавим комментарий'])</camunda:script>
           </camunda:executionListener>
           <camunda:taskListener event="create">
             <camunda:script scriptFormat="groovy">// Извлекаем текущий шаг из контекста выполнения
@@ -110,11 +111,20 @@ if (step != null) {
 }
 </camunda:script>
           </camunda:taskListener>
+          <camunda:taskListener delegateExpression="#{userTaskNotificationListener}" event="create" id="notificationListener">
+            <camunda:field name="messageCode">
+              <camunda:string>NTB0600_TASK_ASSIGNED</camunda:string>
+            </camunda:field>
+            <camunda:field name="properties">
+              <camunda:expression>${messageProperties}</camunda:expression>
+            </camunda:field>
+          </camunda:taskListener>
         </bpmn:extensionElements>
         <bpmn:incoming>Flow_ToSingle</bpmn:incoming>
         <bpmn:outgoing>Flow_3</bpmn:outgoing>
       </bpmn:userTask>
       <bpmn:userTask id="Task_Parallel" name="${currentStep.name} (Параллельно)" camunda:assignee="${assigneeLoop}" camunda:dueDate="#{extensions.timeService.addCalendarDaysTillEndOfDay(currentStep.working_days)}">
+        <bpmn:documentation>${S(baseDocument).prop("data").prop("typeTitle").stringValue()} № ${S(baseDocument).prop("data").prop("projectNumber").stringValue()}</bpmn:documentation>
         <bpmn:extensionElements>
           <camunda:inputOutput>
             <camunda:inputParameter name="disableDefaultNotifications">${true}</camunda:inputParameter>
@@ -122,8 +132,16 @@ if (step != null) {
           </camunda:inputOutput>
           <camunda:executionListener event="start">
             <camunda:script scriptFormat="groovy">//Смотрим пример формирования в процессе "Отправка уведомлений задачи пользователя" (UserTaskNotificationDelegateProcess)
-execution.setVariable('messageProperties', [errorMessage: 'здесь будет сообщение об ошибке'])</camunda:script>
+execution.setVariable('messageProperties', [commentText: 'Сюда добавим комментарий'])</camunda:script>
           </camunda:executionListener>
+          <camunda:taskListener delegateExpression="#{userTaskNotificationListener}" event="create" id="notificationListener">
+            <camunda:field name="messageCode">
+              <camunda:string>NTB0600_TASK_ASSIGNED</camunda:string>
+            </camunda:field>
+            <camunda:field name="properties">
+              <camunda:expression>${messageProperties}</camunda:expression>
+            </camunda:field>
+          </camunda:taskListener>
         </bpmn:extensionElements>
         <bpmn:incoming>Flow_ToParallel</bpmn:incoming>
         <bpmn:outgoing>Flow_4</bpmn:outgoing>
@@ -186,7 +204,7 @@ execution.setVariable("parallelAssigneesList", cleanCollection)
       <bpmn:sequenceFlow id="Flow_ToCheck" sourceRef="Gateway_Merge" targetRef="Gateway_CheckResult" />
       <bpmn:sequenceFlow id="Flow_StepApproved" name="Успешно" sourceRef="Gateway_CheckResult" targetRef="SubEnd" />
       <bpmn:sequenceFlow id="Flow_StepRejected" name="Отклонено" sourceRef="Gateway_CheckResult" targetRef="Event_ThrowReject">
-        <bpmn:conditionExpression xsi_1:type="bpmn:tFormalExpression">${taskOutcome == 'TAB1020_DECLINE'}</bpmn:conditionExpression>
+        <bpmn:conditionExpression xsi_1:type="bpmn:tFormalExpression">${taskOutcome == 'TAB0600_DECLINE'}</bpmn:conditionExpression>
       </bpmn:sequenceFlow>
       <bpmn:sequenceFlow id="Flow_StepRevision" name="В самое начало" sourceRef="Gateway_CheckResult" targetRef="Event_ThrowRevision">
         <bpmn:conditionExpression xsi_1:type="bpmn:tFormalExpression">${taskOutcome == 'TAB0600_REVISE'}</bpmn:conditionExpression>
@@ -317,14 +335,14 @@ log.info("PROCESS [{}] stepFormMap: [{}]", execution.getProcessInstanceId(), ste
         </camunda:inputOutput>
         <camunda:executionListener event="start">
           <camunda:script scriptFormat="groovy">//Смотрим пример формирования в процессе "Отправка уведомлений задачи пользователя" (UserTaskNotificationDelegateProcess)
-execution.setVariable('messageProperties', [errorMessage: 'здесь будет сообщение об ошибке'])</camunda:script>
+execution.setVariable('messageProperties', [commentText: 'Сюда добавим комментарий'])</camunda:script>
         </camunda:executionListener>
       </bpmn:extensionElements>
       <bpmn:incoming>Flow_1ais0xa</bpmn:incoming>
       <bpmn:outgoing>Flow_BackFromGlobalRevision</bpmn:outgoing>
     </bpmn:userTask>
     <bpmn:endEvent id="EndEvent_1" name="EndEvent_1">
-      <bpmn:incoming>Flow_00ss0x4</bpmn:incoming>
+      <bpmn:incoming>Flow_15tfl2i</bpmn:incoming>
     </bpmn:endEvent>
     <bpmn:sequenceFlow id="Flow_ToAnchor" sourceRef="StartEvent_1" targetRef="setDocumentAttributes" />
     <bpmn:sequenceFlow id="Flow_End" sourceRef="DynamicStepsSubprocess" targetRef="Activity_15o3czr" />
@@ -407,10 +425,13 @@ execution.setVariable("errorMap", errorMapJson)
     <bpmn:serviceTask id="noticeOfDecline" name="Отправка уведомления об Отклонении" camunda:delegateExpression="#{notificationSender}">
       <bpmn:extensionElements>
         <camunda:inputOutput>
-          <camunda:inputParameter name="messageCode">NTB1000_DECLINED</camunda:inputParameter>
+          <camunda:inputParameter name="messageCode">NTB0600_DECLINED</camunda:inputParameter>
           <camunda:inputParameter name="addresseeLogins">${initiator}</camunda:inputParameter>
-          <camunda:inputParameter name="properties">${notificationProps}</camunda:inputParameter>
+          <camunda:inputParameter name="properties">${messageProperties}</camunda:inputParameter>
         </camunda:inputOutput>
+        <camunda:executionListener event="start">
+          <camunda:script scriptFormat="groovy">execution.setVariable('messageProperties', [commentText: 'Сюда добавим комментарий'])</camunda:script>
+        </camunda:executionListener>
       </bpmn:extensionElements>
       <bpmn:incoming>Flow_1121wso</bpmn:incoming>
       <bpmn:outgoing>Flow_14rok4g</bpmn:outgoing>
@@ -428,7 +449,7 @@ execution.setVariable("errorMap", errorMapJson)
           <camunda:inputParameter name="method">PUT</camunda:inputParameter>
           <camunda:inputParameter name="body">
             <camunda:map>
-              <camunda:entry key="statusCode">DSB0600_DECLINE</camunda:entry>
+              <camunda:entry key="statusCode">DSB0600_DECLINED</camunda:entry>
             </camunda:map>
           </camunda:inputParameter>
         </camunda:inputOutput>
@@ -564,6 +585,8 @@ execution.setVariable('entityMetadata', metadata)
       <bpmn:script>/* 0600 Script Task "Настройка этапов" (setupStages) */
 import groovy.json.JsonOutput 
 import org.camunda.bpm.engine.delegate.BpmnError
+//Использование import groovy.json.JsonBuilder позволяет удобно формировать новые JSON-структуры внутри скрипта Camunda 7
+import groovy.json.JsonBuilder
 
 def log = org.slf4j.LoggerFactory.getLogger("${processCode}_setupStages")
 def processInstanceId = execution.getProcessInstanceId()
@@ -694,6 +717,9 @@ def stageNameRows = extractDataRows(stageDataMap)
 log.info("PROCESS [{}]: Данные успешно извлечены. Строк: setupRows={}, userRows={}, stageNameRows={}", 
     processInstanceId, setupRows.size(), userRows.size(), stageNameRows.size())
     
+//Контроль setupRows
+//log.info("PROCESS [{}]: Контроль setupRows: {}", processInstanceId, setupRows)
+
 // Шаг 1: Фильтрация этапов по текущему Типу документа и атрибутам Документа
 def filteredSetupStages = setupRows.findAll { row -&gt;
   def currentStageCode = row.stage_code?.toString() ?: ""
@@ -816,6 +842,13 @@ filteredSetupStages.each { setupRow -&gt;
   def workingDays = (setupRow.working_days as Integer) ?: 2
   def btnRevise = setupRow.button_revise?.toString() ?: "N"
   def btnDecline = setupRow.button_decline?.toString() ?: "N"
+  
+  //Контроль наличия assignmentType равного CANDIDATE_GROUPS или GROUP
+  if (assignmentType == 'CANDIDATE_GROUPS' || assignmentType == 'GROUP') {
+    errorMessage = "В настройках этапа '${currentStageCode}' используется нереализованный Тип назначения: '${assignmentType}'"
+    log.error("PROCESS [{}]: {}", processInstanceId, errorMessage)
+    throw new BpmnError("ERROR", errorMessage)
+  }
   
   //Определение доступны Действий
   def allowedActions = ["TAB0600_ACCEPT"]
@@ -974,6 +1007,18 @@ filteredSetupStages.each { setupRow -&gt;
   setupStages[currentStageCode] = stepConfig
 }
 
+// ПОСТОБРАБОТКА: Сквозной динамический перерасчет номеров строк (с одинаковым именем этапа)
+def nextStageNum = 1
+def stageNameToNumMap = [:]
+
+initialList.each { row -&gt;
+  def stageName = row["ABB0600_INITIAL_STAGE_NAME"] ?: ""
+  if (!stageNameToNumMap.containsKey(stageName)) {
+    stageNameToNumMap[stageName] = (nextStageNum++).toString()
+  }
+  row["ABB0600_STAGE_NUM"] = stageNameToNumMap[stageName]
+}
+
 // Превращаем значения LinkedHashMap в плоский список List для Camunda Multi-Instance
 def stepsCollection = new ArrayList(setupStages.values())
 
@@ -982,6 +1027,33 @@ if (stepsCollection.isEmpty()) {
   errorMessage = "Для типа документа ${docType} не настроено ни одного обязательного этапа согласования в LDB0600_SETUP_STAGES.".toString()
   log.error("PROCESS [{}]: {}", processInstanceId, errorMessage)
   throw new BpmnError("ERROR", errorMessage)
+}
+
+//Если в форме документа сохранена информация об ошибке, а теперь ошибки нет, то чистим значение ERROR_MESSAGE и ERROR_FLAG_YN (если есть)
+def oldErrorValue = metaMap?.attributes?.ERROR_MESSAGE ?: ""
+if (oldErrorValue != "" &amp;&amp; errorMessage == "") {
+  //Вариант 1. С использованием groovy.json.JsonBuilder
+  errorJsonMap = new JsonBuilder(["ERROR_MESSAGE": "", "ERROR_FLAG_YN": "N"]).toString() //Ошибка при запуске через через Cockpit
+  //Вариант 2. Создаем JSON-строку через встроенный движок Spin
+  //errorJsonMap = S("{}").prop("ERROR_MESSAGE", "").prop("ERROR_FLAG_YN", "N").toString()
+  execution.setVariableLocal("body", errorJsonMap)
+  
+  //Общие Local переменные для вызова метода обновления атрибутов Документа
+  execution.setVariableLocal("serviceName", "documents")
+  execution.setVariableLocal("method", "PUT")
+  
+  fullPath = "private/documents/${entityGuid}/_attributes"
+  execution.setVariableLocal("path", fullPath)
+  try {
+    //log.info("PROCESS [{}] Clear ERROR_MESSAGE fullPath: {} body: {}", processInstanceId, fullPath, errorJsonMap)
+    restClient.execute(execution)
+  
+  } catch (Exception e) {
+    log.info("PROCESS [{}] Error call fullPath: {} body: {}", processInstanceId, fullPath, errorJsonMap)
+    errorMessage = "Не удалось очистить атрибут ERROR_MESSAGE"
+    //execution.setVariable("errorMessage", errorMessage) //Сохраним значение errorMessage - Лишнее, т.к. значение сохранится в boundaryEvent
+    throw new BpmnError("ERROR", errorMessage)
+  }  
 }
 
 // Шаг 5: Запись результатов в переменные процесса Camunda как чистые Java-объекты
@@ -1040,7 +1112,22 @@ log.info("PROCESS [{}] ---End Сборка динамического маршр
       <bpmn:incoming>Flow_End</bpmn:incoming>
       <bpmn:outgoing>Flow_00ss0x4</bpmn:outgoing>
     </bpmn:serviceTask>
-    <bpmn:sequenceFlow id="Flow_00ss0x4" sourceRef="Activity_15o3czr" targetRef="EndEvent_1" />
+    <bpmn:sequenceFlow id="Flow_00ss0x4" sourceRef="Activity_15o3czr" targetRef="noticeOfApproved" />
+    <bpmn:serviceTask id="noticeOfApproved" name="Отправка уведомления о Согласовании" camunda:delegateExpression="#{notificationSender}">
+      <bpmn:extensionElements>
+        <camunda:inputOutput>
+          <camunda:inputParameter name="messageCode">NTB0600_APPROVED</camunda:inputParameter>
+          <camunda:inputParameter name="addresseeLogins">${initiator}</camunda:inputParameter>
+          <camunda:inputParameter name="properties">${messageProperties}</camunda:inputParameter>
+        </camunda:inputOutput>
+        <camunda:executionListener event="start">
+          <camunda:script scriptFormat="groovy">execution.setVariable('messageProperties', [commentText: 'Сюда добавим комментарий'])</camunda:script>
+        </camunda:executionListener>
+      </bpmn:extensionElements>
+      <bpmn:incoming>Flow_00ss0x4</bpmn:incoming>
+      <bpmn:outgoing>Flow_15tfl2i</bpmn:outgoing>
+    </bpmn:serviceTask>
+    <bpmn:sequenceFlow id="Flow_15tfl2i" sourceRef="noticeOfApproved" targetRef="EndEvent_1" />
   </bpmn:process>
   <bpmn:escalation id="Escalation_25pft9f" name="STATUS" escalationCode="STATUS" />
   <bpmn:error id="Error_0aexqe7" name="ERROR" errorCode="ERROR" camunda:errorMessage="errorMessage" />
@@ -1051,6 +1138,16 @@ log.info("PROCESS [{}] ---End Сборка динамического маршр
         <bpmndi:BPMNLabel>
           <dc:Bounds x="159" y="282" width="64" height="14" />
         </bpmndi:BPMNLabel>
+      </bpmndi:BPMNShape>
+      <bpmndi:BPMNShape id="EndEvent_1_di" bpmnElement="EndEvent_1">
+        <dc:Bounds x="1942" y="222" width="36" height="36" />
+        <bpmndi:BPMNLabel>
+          <dc:Bounds x="1931" y="265" width="60" height="14" />
+        </bpmndi:BPMNLabel>
+      </bpmndi:BPMNShape>
+      <bpmndi:BPMNShape id="BPMNShape_12u2l6v" bpmnElement="noticeOfApproved">
+        <dc:Bounds x="1800" y="200" width="100" height="80" />
+        <bpmndi:BPMNLabel />
       </bpmndi:BPMNShape>
       <bpmndi:BPMNShape id="DynamicStepsSubprocess_di" bpmnElement="DynamicStepsSubprocess" isExpanded="true">
         <dc:Bounds x="560" y="80" width="1050" height="340" />
@@ -1171,12 +1268,6 @@ log.info("PROCESS [{}] ---End Сборка динамического маршр
       <bpmndi:BPMNShape id="Task_GlobalRevision_di" bpmnElement="Task_GlobalRevision">
         <dc:Bounds x="690" y="530" width="100" height="80" />
         <bpmndi:BPMNLabel />
-      </bpmndi:BPMNShape>
-      <bpmndi:BPMNShape id="EndEvent_1_di" bpmnElement="EndEvent_1">
-        <dc:Bounds x="1802" y="222" width="36" height="36" />
-        <bpmndi:BPMNLabel>
-          <dc:Bounds x="1791" y="265" width="60" height="14" />
-        </bpmndi:BPMNLabel>
       </bpmndi:BPMNShape>
       <bpmndi:BPMNShape id="Event_1ciaew0_di" bpmnElement="catchEventError">
         <dc:Bounds x="602" y="852" width="36" height="36" />
@@ -1395,7 +1486,11 @@ log.info("PROCESS [{}] ---End Сборка динамического маршр
       </bpmndi:BPMNEdge>
       <bpmndi:BPMNEdge id="Flow_00ss0x4_di" bpmnElement="Flow_00ss0x4">
         <di_1:waypoint x="1760" y="240" />
-        <di_1:waypoint x="1802" y="240" />
+        <di_1:waypoint x="1800" y="240" />
+      </bpmndi:BPMNEdge>
+      <bpmndi:BPMNEdge id="Flow_15tfl2i_di" bpmnElement="Flow_15tfl2i">
+        <di_1:waypoint x="1900" y="240" />
+        <di_1:waypoint x="1942" y="240" />
       </bpmndi:BPMNEdge>
     </bpmndi:BPMNPlane>
   </bpmndi:BPMNDiagram>
@@ -1408,6 +1503,9 @@ log.info("PROCESS [{}] ---End Сборка динамического маршр
       <bpmndi:BPMNShape id="Event_0sfy3ep_di" bpmnElement="Event_0sfy3ep">
         <dc:Bounds x="152" y="102" width="36" height="36" />
       </bpmndi:BPMNShape>
+      <bpmndi:BPMNShape id="Event_12udmw9_di" bpmnElement="Event_12udmw9">
+        <dc:Bounds x="632" y="102" width="36" height="36" />
+      </bpmndi:BPMNShape>
       <bpmndi:BPMNShape id="BPMNShape_03qehy5" bpmnElement="Activity_0c4gole">
         <dc:Bounds x="500" y="80" width="100" height="80" />
         <bpmndi:BPMNLabel />
@@ -1415,9 +1513,6 @@ log.info("PROCESS [{}] ---End Сборка динамического маршр
       <bpmndi:BPMNShape id="Activity_039jjna_di" bpmnElement="Activity_1ptyz6q">
         <dc:Bounds x="360" y="80" width="100" height="80" />
         <bpmndi:BPMNLabel />
-      </bpmndi:BPMNShape>
-      <bpmndi:BPMNShape id="Event_12udmw9_di" bpmnElement="Event_12udmw9">
-        <dc:Bounds x="632" y="102" width="36" height="36" />
       </bpmndi:BPMNShape>
       <bpmndi:BPMNEdge id="Flow_1s4llhj_di" bpmnElement="Flow_1s4llhj">
         <di_1:waypoint x="188" y="120" />
