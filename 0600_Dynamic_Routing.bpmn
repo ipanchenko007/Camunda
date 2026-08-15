@@ -60,7 +60,7 @@ if (log.isDebugEnabled()) {
         <bpmn:outgoing>Flow_ToSingle</bpmn:outgoing>
         <bpmn:outgoing>Flow_ToParallel</bpmn:outgoing>
       </bpmn:exclusiveGateway>
-      <bpmn:userTask id="Task_SingleOrGroup" name="${currentStep.name}" camunda:dueDate="#{extensions.timeService.addCalendarDaysTillEndOfDay(currentStep.working_days)}">
+      <bpmn:userTask id="Task_SingleOrGroup" name="${currentStep.name}" camunda:asyncBefore="true" camunda:asyncAfter="true" camunda:dueDate="#{extensions.timeService.addCalendarDaysTillEndOfDay(currentStep.working_days)}">
         <bpmn:documentation>${S(baseDocument).prop("data").prop("typeTitle").stringValue()} № ${S(baseDocument).prop("data").prop("projectNumber").stringValue()}</bpmn:documentation>
         <bpmn:extensionElements>
           <camunda:taskListener event="create">
@@ -144,21 +144,36 @@ execution.setVariable('messageProperties', [commentText: 'Сюда добави�
           </camunda:taskListener>
           <camunda:taskListener event="complete">
             <camunda:script scriptFormat="groovy">/* Проверка является ли taskOutcome Глобальной или Локальной  */
-def log = org.slf4j.LoggerFactory.getLogger("TEST_VARIABLE_CHECK")
+import org.slf4j.LoggerFactory
+
+def log = LoggerFactory.getLogger("TEST_VARIABLE_CHECK")
 def taskId = task.id
 
-// Проверяем, есть ли переменная строго в локальном контексте задачи
+// 1. Проверяем локальный контекст задачи
 def isLocal = task.getVariablesLocal().containsKey("taskOutcome")
 def localVal = task.getVariableLocal("taskOutcome")
 
-// Проверяем, есть ли переменная на уровне всего процесса
-def isGlobal = task.getExecution().getVariables().containsKey("taskOutcome")
-def globalVal = task.getExecution().getVariable("taskOutcome")
+// 2. Истинная проверка: лежит ли переменная на уровне подпроцесса
+def isAtSubprocess = task.getExecution().getVariablesLocal().containsKey("taskOutcome")
 
-log.info("--- ПРОВЕРКА TASK ID: ${taskId} ---")
-log.info("Локальная переменная (Task-local): существует = ${isLocal}, значение = ${localVal}")
-log.info("Глобальная переменная (Process): существует = ${isGlobal}, значение = ${globalVal}")
-</camunda:script>
+// 3. Строгая проверка: лежит ли переменная в корне самого процесса
+def isStrictlyGlobal = task.getProcessInstance().getVariables().containsKey("taskOutcome")
+
+// Достаем значение через сквозной поиск снизу вверх для аналитики
+def currentVal = task.getVariable("taskOutcome")
+
+// Выводим детальную аналитику в лог сервера Symphony
+log.info("--- РАСШИРЕННЫЙ АНАЛИЗ ДЛЯ TASK ID: ${taskId} ---")
+log.info("1. Внутри задачи (Task-local): существует = ${isLocal}, значение = ${localVal}")
+log.info("2. Внутри Multi-Instance токена: существует = ${isAtSubprocess}")
+log.info("3. В корне процесса (Strictly Global): существует = ${isStrictlyGlobal}")
+log.info("4. Итоговое видимое значение движком: ${currentVal}")
+
+// Если зафиксирован отказ или доработка, поднимаем переменную наверх
+if (currentVal == "TAB0600_REVISE" || currentVal == "TAB0600_DECLINE") {
+    log.info("Обнаружено негативное решение [${currentVal}]. Копируем переменную в корень процесса.")
+    task.getProcessInstance().setVariable("taskOutcome", currentVal)
+}</camunda:script>
           </camunda:taskListener>
         </bpmn:extensionElements>
         <bpmn:incoming>Flow_ToParallel</bpmn:incoming>
@@ -223,20 +238,18 @@ execution.setVariable("parallelAssigneesList", cleanCollection)
       <bpmn:sequenceFlow id="Flow_4" name="See: Take" sourceRef="Task_Parallel" targetRef="Gateway_Merge">
         <bpmn:extensionElements>
           <camunda:executionListener event="take">
-            <camunda:script scriptFormat="groovy">/* Для прерывания выполнения, если один из пользователей отправил на Доработку или Отклонил */
+            <camunda:script scriptFormat="groovy">/* Фиксация негативного решения для Симфонии и прерывание параллельного этапа */
 import org.camunda.bpm.engine.delegate.BpmnError
 
 // Извлекаем результат, который зафиксировал первый нажавший пользователь
 def outcome = execution.getVariable("taskOutcome")
 
 if (outcome == "TAB0600_REVISE") {
-    // Важно: Удаляем переменную перед выбросом ошибки, чтобы очистить память процесса для будущих кругов
-    execution.removeVariable("taskOutcome")
+    // Не удаляем переменную, оставляя её для Симфонии, и уводим процесс на доработку
     throw new BpmnError("PROCESS_REVISION")
     
 } else if (outcome == "TAB0600_DECLINE") {
-    // Удаляем переменную перед выбросом ошибки отказа
-    execution.removeVariable("taskOutcome")
+    // Не удаляем переменную, уводим процесс на полный отказ
     throw new BpmnError("PROCESS_REJECTED")
 }
 </camunda:script>
@@ -348,11 +361,11 @@ def stepFormJson = new JsonBuilder([
 // Сохраняем в переменную процесса
 execution.setVariable("stepFormMap", stepFormJson)
 
-// Очищаем переменную результата предыдущего шага перед началом текущего,
-// чтобы избежать наложения данных на одиночных или параллельных этапах
-execution.removeVariable("taskOutcome")
+// Вместо removeVariable мы перезаписываем значение в нейтральный статус.
+// Это очищает контекст Camunda для нового шага, но сохраняет саму переменную для Симфонии.
+execution.setVariable("taskOutcome", "NONE")
 
-log.info("PROCESS [{}] stepFormMap: [{}]", execution.getProcessInstanceId(), stepFormJson) </bpmn:script>
+log.info("PROCESS [{}] stepFormMap: [{}], taskOutcome сброшен в NONE", execution.getProcessInstanceId(), stepFormJson)</bpmn:script>
         </bpmn:scriptTask>
       </bpmn:subProcess>
     </bpmn:subProcess>
