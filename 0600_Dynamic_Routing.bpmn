@@ -142,10 +142,42 @@ execution.setVariable('messageProperties', [commentText: 'Сюда добави�
               <camunda:expression>${messageProperties}</camunda:expression>
             </camunda:field>
           </camunda:taskListener>
+          <camunda:executionListener event="end">
+            <camunda:script scriptFormat="groovy">/* Для прерывания выполнения, если один из пользователей отправил на Доработку или Отклонил */
+import org.camunda.bpm.engine.delegate.BpmnError
+
+def outcome = execution.getVariable("taskOutcome")
+
+if (outcome == "TAB0600_REVISE") {
+    throw new BpmnError("PROCESS_REVISION")
+} else if (outcome == "TAB0600_DECLINE") {
+    throw new BpmnError("PROCESS_REJECTED")
+}</camunda:script>
+          </camunda:executionListener>
+          <camunda:taskListener event="complete">
+            <camunda:script scriptFormat="groovy">/* Проверка является ли taskOutcome Глобальной или Локальной  */
+def log = org.slf4j.LoggerFactory.getLogger("TEST_VARIABLE_CHECK")
+def taskId = task.id
+
+// Проверяем, есть ли переменная строго в локальном контексте задачи
+def isLocal = task.getVariablesLocal().containsKey("taskOutcome")
+def localVal = task.getVariableLocal("taskOutcome")
+
+// Проверяем, есть ли переменная на уровне всего процесса
+def isGlobal = task.getExecution().getVariables().containsKey("taskOutcome")
+def globalVal = task.getExecution().getVariable("taskOutcome")
+
+log.info("--- ПРОВЕРКА TASK ID: ${taskId} ---")
+log.info("Локальная переменная (Task-local): существует = ${isLocal}, значение = ${localVal}")
+log.info("Глобальная переменная (Process): существует = ${isGlobal}, значение = ${globalVal}")
+</camunda:script>
+          </camunda:taskListener>
         </bpmn:extensionElements>
         <bpmn:incoming>Flow_ToParallel</bpmn:incoming>
         <bpmn:outgoing>Flow_4</bpmn:outgoing>
-        <bpmn:multiInstanceLoopCharacteristics camunda:collection="parallelAssigneesList" camunda:elementVariable="assigneeLoop" />
+        <bpmn:multiInstanceLoopCharacteristics camunda:collection="parallelAssigneesList" camunda:elementVariable="assigneeLoop">
+          <bpmn:completionCondition xsi_1:type="bpmn:tFormalExpression">${taskOutcome == 'TAB0600_REVISE' or taskOutcome == 'TAB0600_DECLINE'}</bpmn:completionCondition>
+        </bpmn:multiInstanceLoopCharacteristics>
       </bpmn:userTask>
       <bpmn:exclusiveGateway id="Gateway_Merge">
         <bpmn:incoming>Flow_3</bpmn:incoming>
