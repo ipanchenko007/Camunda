@@ -220,19 +220,26 @@ execution.setVariable("parallelAssigneesList", cleanCollection)
         <bpmn:conditionExpression xsi_1:type="bpmn:tFormalExpression">${currentStep.assignment_type == 'PARALLEL'}</bpmn:conditionExpression>
       </bpmn:sequenceFlow>
       <bpmn:sequenceFlow id="Flow_3" sourceRef="Task_SingleOrGroup" targetRef="Gateway_Merge" />
-      <bpmn:sequenceFlow id="Flow_4" sourceRef="Task_Parallel" targetRef="Gateway_Merge">
+      <bpmn:sequenceFlow id="Flow_4" name="See: Take" sourceRef="Task_Parallel" targetRef="Gateway_Merge">
         <bpmn:extensionElements>
           <camunda:executionListener event="take">
             <camunda:script scriptFormat="groovy">/* Для прерывания выполнения, если один из пользователей отправил на Доработку или Отклонил */
 import org.camunda.bpm.engine.delegate.BpmnError
 
+// Извлекаем результат, который зафиксировал первый нажавший пользователь
 def outcome = execution.getVariable("taskOutcome")
 
 if (outcome == "TAB0600_REVISE") {
+    // Важно: Удаляем переменную перед выбросом ошибки, чтобы очистить память процесса для будущих кругов
+    execution.removeVariable("taskOutcome")
     throw new BpmnError("PROCESS_REVISION")
+    
 } else if (outcome == "TAB0600_DECLINE") {
+    // Удаляем переменную перед выбросом ошибки отказа
+    execution.removeVariable("taskOutcome")
     throw new BpmnError("PROCESS_REJECTED")
-}</camunda:script>
+}
+</camunda:script>
           </camunda:executionListener>
         </bpmn:extensionElements>
       </bpmn:sequenceFlow>
@@ -340,6 +347,10 @@ def stepFormJson = new JsonBuilder([
 
 // Сохраняем в переменную процесса
 execution.setVariable("stepFormMap", stepFormJson)
+
+// Очищаем переменную результата предыдущего шага перед началом текущего,
+// чтобы избежать наложения данных на одиночных или параллельных этапах
+execution.removeVariable("taskOutcome")
 
 log.info("PROCESS [{}] stepFormMap: [{}]", execution.getProcessInstanceId(), stepFormJson) </bpmn:script>
         </bpmn:scriptTask>
@@ -1261,6 +1272,9 @@ log.info("PROCESS [{}] ---End Сборка динамического маршр
         <di_1:waypoint x="1160" y="320" />
         <di_1:waypoint x="1240" y="320" />
         <di_1:waypoint x="1240" y="265" />
+        <bpmndi:BPMNLabel>
+          <dc:Bounds x="1175" y="302" width="50" height="14" />
+        </bpmndi:BPMNLabel>
       </bpmndi:BPMNEdge>
       <bpmndi:BPMNEdge id="Flow_ToCheck_di" bpmnElement="Flow_ToCheck">
         <di_1:waypoint x="1265" y="240" />
