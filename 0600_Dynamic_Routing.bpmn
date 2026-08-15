@@ -142,18 +142,6 @@ execution.setVariable('messageProperties', [commentText: 'Сюда добави�
               <camunda:expression>${messageProperties}</camunda:expression>
             </camunda:field>
           </camunda:taskListener>
-          <camunda:executionListener event="end">
-            <camunda:script scriptFormat="groovy">/* Для прерывания выполнения, если один из пользователей отправил на Доработку или Отклонил */
-import org.camunda.bpm.engine.delegate.BpmnError
-
-def outcome = execution.getVariable("taskOutcome")
-
-if (outcome == "TAB0600_REVISE") {
-    throw new BpmnError("PROCESS_REVISION")
-} else if (outcome == "TAB0600_DECLINE") {
-    throw new BpmnError("PROCESS_REJECTED")
-}</camunda:script>
-          </camunda:executionListener>
           <camunda:taskListener event="complete">
             <camunda:script scriptFormat="groovy">/* Проверка является ли taskOutcome Глобальной или Локальной  */
 def log = org.slf4j.LoggerFactory.getLogger("TEST_VARIABLE_CHECK")
@@ -232,7 +220,22 @@ execution.setVariable("parallelAssigneesList", cleanCollection)
         <bpmn:conditionExpression xsi_1:type="bpmn:tFormalExpression">${currentStep.assignment_type == 'PARALLEL'}</bpmn:conditionExpression>
       </bpmn:sequenceFlow>
       <bpmn:sequenceFlow id="Flow_3" sourceRef="Task_SingleOrGroup" targetRef="Gateway_Merge" />
-      <bpmn:sequenceFlow id="Flow_4" sourceRef="Task_Parallel" targetRef="Gateway_Merge" />
+      <bpmn:sequenceFlow id="Flow_4" sourceRef="Task_Parallel" targetRef="Gateway_Merge">
+        <bpmn:extensionElements>
+          <camunda:executionListener event="take">
+            <camunda:script scriptFormat="groovy">/* Для прерывания выполнения, если один из пользователей отправил на Доработку или Отклонил */
+import org.camunda.bpm.engine.delegate.BpmnError
+
+def outcome = execution.getVariable("taskOutcome")
+
+if (outcome == "TAB0600_REVISE") {
+    throw new BpmnError("PROCESS_REVISION")
+} else if (outcome == "TAB0600_DECLINE") {
+    throw new BpmnError("PROCESS_REJECTED")
+}</camunda:script>
+          </camunda:executionListener>
+        </bpmn:extensionElements>
+      </bpmn:sequenceFlow>
       <bpmn:sequenceFlow id="Flow_ToCheck" sourceRef="Gateway_Merge" targetRef="Gateway_CheckResult" />
       <bpmn:sequenceFlow id="Flow_StepApproved" name="Успешно" sourceRef="Gateway_CheckResult" targetRef="SubEnd" />
       <bpmn:sequenceFlow id="Flow_StepRejected" name="Отклонено" sourceRef="Gateway_CheckResult" targetRef="Event_ThrowReject">
