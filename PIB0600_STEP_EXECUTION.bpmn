@@ -28,39 +28,12 @@ execution.setVariable('messageProperties', [commentText: 'Сюда добави�
           </camunda:field>
         </camunda:taskListener>
         <camunda:taskListener event="complete">
-          <camunda:script scriptFormat="groovy">/* Проверка является ли taskOutcome Глобальной или Локальной  */
-/*** Закомментировал эту проверку ****
-import org.slf4j.LoggerFactory
-
-def log = LoggerFactory.getLogger("TEST_VARIABLE_CHECK")
-def taskId = task.id
-
-// 1. Проверяем локальный контекст задачи
-def isLocal = task.getVariablesLocal().containsKey("taskOutcome")
-def localVal = task.getVariableLocal("taskOutcome")
-
-// 2. Истинная проверка: лежит ли переменная на уровне подпроцесса
-def isAtSubprocess = task.getExecution().getVariablesLocal().containsKey("taskOutcome")
-
-// 3. Строгая проверка: лежит ли переменная в корне самого процесса
-def isStrictlyGlobal = task.getProcessInstance().getVariables().containsKey("taskOutcome")
-
-// Достаем значение через сквозной поиск снизу вверх для аналитики
+          <camunda:script scriptFormat="groovy">/* Для передачи значения taskOutcome в Родительский процесс */
 def currentVal = task.getVariable("taskOutcome")
-
-// Выводим детальную аналитику в лог сервера Symphony
-log.info("--- РАСШИРЕННЫЙ АНАЛИЗ ДЛЯ TASK ID: ${taskId} ---")
-log.info("1. Внутри задачи (Task-local): существует = ${isLocal}, значение = ${localVal}")
-log.info("2. Внутри Multi-Instance токена: существует = ${isAtSubprocess}")
-log.info("3. В корне процесса (Strictly Global): существует = ${isStrictlyGlobal}")
-log.info("4. Итоговое видимое значение движком: ${currentVal}")
-
-// Если зафиксирован отказ или доработка, поднимаем переменную наверх
 if (currentVal == "TAB0600_REVISE" || currentVal == "TAB0600_DECLINE") {
-    log.info("Обнаружено негативное решение [${currentVal}]. Копируем переменную в корень процесса.")
-    task.getProcessInstance().setVariable("taskOutcome", currentVal)
-}
-*** END Закомментировал эту проверку ****/</camunda:script>
+    // Принудительно поднимаем значение на уровень инстанса дочернего процесса
+    task.getExecution().setVariable("taskOutcome", currentVal)
+}</camunda:script>
         </camunda:taskListener>
       </bpmn:extensionElements>
       <bpmn:incoming>Flow_ToParallel</bpmn:incoming>
@@ -72,16 +45,10 @@ if (currentVal == "TAB0600_REVISE" || currentVal == "TAB0600_DECLINE") {
     <bpmn:exclusiveGateway id="Gateway_Merge">
       <bpmn:incoming>Flow_4</bpmn:incoming>
       <bpmn:incoming>Flow_3</bpmn:incoming>
-      <bpmn:outgoing>Flow_ToCheck</bpmn:outgoing>
-    </bpmn:exclusiveGateway>
-    <bpmn:exclusiveGateway id="Gateway_CheckResult" name="Результат шага?" default="Flow_StepApproved">
-      <bpmn:incoming>Flow_ToCheck</bpmn:incoming>
-      <bpmn:outgoing>Flow_StepApproved</bpmn:outgoing>
-      <bpmn:outgoing>Flow_StepRejected</bpmn:outgoing>
-      <bpmn:outgoing>Flow_StepRevision</bpmn:outgoing>
+      <bpmn:outgoing>Flow_0vodv9m</bpmn:outgoing>
     </bpmn:exclusiveGateway>
     <bpmn:endEvent id="SubEnd" name="Конец шага">
-      <bpmn:incoming>Flow_StepApproved</bpmn:incoming>
+      <bpmn:incoming>Flow_0vodv9m</bpmn:incoming>
     </bpmn:endEvent>
     <bpmn:subProcess id="prepareCurrentStage" name="Подготовка текущего этапа">
       <bpmn:incoming>Flow_0brv6y3</bpmn:incoming>
@@ -281,24 +248,11 @@ execution.setVariable("parallelAssigneesList", cleanCollection)
       <bpmn:extensionElements />
     </bpmn:sequenceFlow>
     <bpmn:sequenceFlow id="Flow_3" sourceRef="Task_SingleOrGroup" targetRef="Gateway_Merge" />
-    <bpmn:sequenceFlow id="Flow_ToCheck" sourceRef="Gateway_Merge" targetRef="Gateway_CheckResult" />
-    <bpmn:sequenceFlow id="Flow_StepApproved" name="Успешно" sourceRef="Gateway_CheckResult" targetRef="SubEnd" />
-    <bpmn:sequenceFlow id="Flow_StepRejected" name="Отклонено" sourceRef="Gateway_CheckResult" targetRef="Event_ThrowReject">
-      <bpmn:conditionExpression xsi_1:type="bpmn:tFormalExpression">${taskOutcome == 'TAB0600_DECLINE'}</bpmn:conditionExpression>
-    </bpmn:sequenceFlow>
-    <bpmn:sequenceFlow id="Flow_StepRevision" name="В самое начало" sourceRef="Gateway_CheckResult" targetRef="Event_ThrowRevision">
-      <bpmn:conditionExpression xsi_1:type="bpmn:tFormalExpression">${taskOutcome == 'TAB0600_REVISE'}</bpmn:conditionExpression>
-    </bpmn:sequenceFlow>
     <bpmn:startEvent id="SubStart" name="Начало шага">
       <bpmn:outgoing>Flow_0brv6y3</bpmn:outgoing>
     </bpmn:startEvent>
     <bpmn:sequenceFlow id="Flow_0brv6y3" sourceRef="SubStart" targetRef="prepareCurrentStage" />
-    <bpmn:endEvent id="Event_ThrowReject" name="Выброс отказа">
-      <bpmn:incoming>Flow_StepRejected</bpmn:incoming>
-    </bpmn:endEvent>
-    <bpmn:endEvent id="Event_ThrowRevision" name="Выброс на доработку">
-      <bpmn:incoming>Flow_StepRevision</bpmn:incoming>
-    </bpmn:endEvent>
+    <bpmn:sequenceFlow id="Flow_0vodv9m" sourceRef="Gateway_Merge" targetRef="SubEnd" />
   </bpmn:process>
   <bpmn:escalation id="Escalation_25pft9f" name="STATUS" escalationCode="STATUS" />
   <bpmn:error id="Error_0aexqe7" name="ERROR" errorCode="ERROR" camunda:errorMessage="errorMessage" />
@@ -322,31 +276,13 @@ execution.setVariable("parallelAssigneesList", cleanCollection)
       <bpmndi:BPMNShape id="BPMNShape_03ofpd4" bpmnElement="Gateway_Merge" isMarkerVisible="true">
         <dc:Bounds x="685" y="185" width="50" height="50" />
       </bpmndi:BPMNShape>
-      <bpmndi:BPMNShape id="BPMNShape_0v8stia" bpmnElement="Gateway_CheckResult" isMarkerVisible="true">
-        <dc:Bounds x="795" y="185" width="50" height="50" />
-        <bpmndi:BPMNLabel>
-          <dc:Bounds x="777" y="245" width="85" height="14" />
-        </bpmndi:BPMNLabel>
-      </bpmndi:BPMNShape>
-      <bpmndi:BPMNShape id="BPMNShape_1ehu1ck" bpmnElement="SubEnd">
-        <dc:Bounds x="982" y="192" width="36" height="36" />
-        <bpmndi:BPMNLabel>
-          <dc:Bounds x="970" y="235" width="60" height="14" />
-        </bpmndi:BPMNLabel>
-      </bpmndi:BPMNShape>
       <bpmndi:BPMNShape id="BPMNShape_178gtoj" bpmnElement="Task_SingleOrGroup">
         <dc:Bounds x="530" y="80" width="100" height="80" />
       </bpmndi:BPMNShape>
-      <bpmndi:BPMNShape id="Event_1r76cwc_di" bpmnElement="Event_ThrowReject">
-        <dc:Bounds x="982" y="102" width="36" height="36" />
+      <bpmndi:BPMNShape id="BPMNShape_1ehu1ck" bpmnElement="SubEnd">
+        <dc:Bounds x="782" y="192" width="36" height="36" />
         <bpmndi:BPMNLabel>
-          <dc:Bounds x="962" y="145" width="76" height="14" />
-        </bpmndi:BPMNLabel>
-      </bpmndi:BPMNShape>
-      <bpmndi:BPMNShape id="Event_0nat480_di" bpmnElement="Event_ThrowRevision">
-        <dc:Bounds x="982" y="272" width="36" height="36" />
-        <bpmndi:BPMNLabel>
-          <dc:Bounds x="973" y="315" width="55" height="27" />
+          <dc:Bounds x="770" y="235" width="60" height="14" />
         </bpmndi:BPMNLabel>
       </bpmndi:BPMNShape>
       <bpmndi:BPMNShape id="BPMNShape_0l5eg19" bpmnElement="prepareCurrentStage" isExpanded="false">
@@ -390,32 +326,9 @@ execution.setVariable("parallelAssigneesList", cleanCollection)
         <di_1:waypoint x="710" y="120" />
         <di_1:waypoint x="710" y="185" />
       </bpmndi:BPMNEdge>
-      <bpmndi:BPMNEdge id="BPMNEdge_0ee576f" bpmnElement="Flow_ToCheck">
+      <bpmndi:BPMNEdge id="Flow_0vodv9m_di" bpmnElement="Flow_0vodv9m">
         <di_1:waypoint x="735" y="210" />
-        <di_1:waypoint x="795" y="210" />
-      </bpmndi:BPMNEdge>
-      <bpmndi:BPMNEdge id="BPMNEdge_1k4cfu4" bpmnElement="Flow_StepApproved">
-        <di_1:waypoint x="845" y="210" />
-        <di_1:waypoint x="982" y="210" />
-        <bpmndi:BPMNLabel>
-          <dc:Bounds x="877" y="193" width="45" height="14" />
-        </bpmndi:BPMNLabel>
-      </bpmndi:BPMNEdge>
-      <bpmndi:BPMNEdge id="BPMNEdge_16bah0a" bpmnElement="Flow_StepRejected">
-        <di_1:waypoint x="820" y="185" />
-        <di_1:waypoint x="820" y="120" />
-        <di_1:waypoint x="982" y="120" />
-        <bpmndi:BPMNLabel>
-          <dc:Bounds x="872" y="93" width="56" height="14" />
-        </bpmndi:BPMNLabel>
-      </bpmndi:BPMNEdge>
-      <bpmndi:BPMNEdge id="BPMNEdge_1t06kv2" bpmnElement="Flow_StepRevision">
-        <di_1:waypoint x="820" y="235" />
-        <di_1:waypoint x="820" y="290" />
-        <di_1:waypoint x="982" y="290" />
-        <bpmndi:BPMNLabel>
-          <dc:Bounds x="869" y="313" width="82" height="14" />
-        </bpmndi:BPMNLabel>
+        <di_1:waypoint x="782" y="210" />
       </bpmndi:BPMNEdge>
     </bpmndi:BPMNPlane>
   </bpmndi:BPMNDiagram>
