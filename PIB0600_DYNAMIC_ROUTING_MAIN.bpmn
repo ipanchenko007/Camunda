@@ -853,7 +853,7 @@ log.info("PROCESS [{}] ---End Сборка динамического маршр
       </bpmn:extensionElements>
       <bpmn:incoming>Flow_1bifo73</bpmn:incoming>
       <bpmn:outgoing>Flow_0ywojgm</bpmn:outgoing>
-      <bpmn:multiInstanceLoopCharacteristics isSequential="true" camunda:collection="step" camunda:elementVariable="currentStep">
+      <bpmn:multiInstanceLoopCharacteristics isSequential="true" camunda:collection="steps" camunda:elementVariable="currentStep">
         <bpmn:completionCondition xsi_1:type="bpmn:tFormalExpression">${taskOutcome == 'TAB0600_REVISE' or taskOutcome == 'TAB0600_DECLINE'}</bpmn:completionCondition>
       </bpmn:multiInstanceLoopCharacteristics>
     </bpmn:callActivity>
