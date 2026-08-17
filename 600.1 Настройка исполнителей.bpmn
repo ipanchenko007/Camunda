@@ -1,0 +1,1406 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<bpmn:definitions xmlns:bpmn="http://www.omg.org/spec/BPMN/20100524/MODEL" xmlns:bpmndi="http://www.omg.org/spec/BPMN/20100524/DI" xmlns:dc="http://www.omg.org/spec/DD/20100524/DC" xmlns:camunda="http://camunda.org/schema/1.0/bpmn" xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance" xmlns:di="http://www.omg.org/spec/DD/20100524/DI" xmlns:bioc="http://bpmn.io/schema/bpmn/biocolor/1.0" xmlns:color="http://www.omg.org/spec/BPMN/non-normative/color/1.0" xmlns:modeler="http://camunda.org/schema/modeler/1.0" id="Definitions_0uvm6es" targetNamespace="http://bpmn.io/schema/bpmn" exporter="Camunda Modeler" exporterVersion="5.31.0" modeler:executionPlatform="Camunda Platform" modeler:executionPlatformVersion="7.22.0">
+  <bpmn:process id="PIB0600_1_APPROVER_SETTING" name="0600.1 Настройки исполнителей" isExecutable="true" camunda:historyTimeToLive="365">
+    <bpmn:documentation>Вариант для работы со справочником LDB0600_REQUEST_USERS
+Связанный документ: "0600.1 Настройка исполнителей" (TPB0600_1_APPROVER_SETTING).</bpmn:documentation>
+    <bpmn:startEvent id="Event_17jaet4">
+      <bpmn:extensionElements>
+        <camunda:executionListener event="end">
+          <camunda:script scriptFormat="groovy">/* 0600.1 Start Event (Execution listeners: End) "StartEvent_1" (StartEvent_1) */
+/* Заполнение начальных значений процесса */
+import java.text.SimpleDateFormat
+
+// Задаем BusinessKey Склеиваем префикс и часть системного ID
+def date = new SimpleDateFormat("yyyyMMdd").format(new Date())
+def random = Math.abs(new Random().nextInt() % 1000).toString().padLeft(3, '0')
+def bKey = "PROC-${date}-${random}"
+execution.setProcessBusinessKey(bKey)
+
+// Получаем системные данные (из кэша движка)
+def processInstanceId = execution.processInstanceId 
+def processDefinition = execution.processEngineServices.repositoryService
+    .getProcessDefinition(execution.processDefinitionId)
+
+// Достаем Имя процесса из этого объекта
+def processName = processDefinition.name ?: "UNKNOWN Process"
+
+// Определяем processCode (берем символы до первого пробела)
+def processCode = processName.takeWhile { it != ' ' } 
+
+// Сохраняем ВСЕ в ГЛОБАЛЬНЫЕ переменные процесса (Map-синтаксис)
+execution.setVariables(
+  ["processInstanceId": processInstanceId
+  ,"processName": processName
+  ,"processCode": processCode
+  ])
+
+//Определим логер
+def log = org.slf4j.LoggerFactory.getLogger("${processCode}_Start_Event")
+
+//log.info("PROCESS: [${processInstanceId}] processCode: '${processCode}' processName: '${processName}'")
+log.info("PROCESS: [{}] processCode: '{}' processName: '{}'", processInstanceId, processCode, processName)
+
+// Выведет все текущие переменные процесса в формате {key1=val1, key2=val2}
+if (log.isDebugEnabled()) {
+    log.debug("PROCESS [{}]: ALL VARS: {}", processInstanceId, execution.variables)
+}</camunda:script>
+        </camunda:executionListener>
+      </bpmn:extensionElements>
+      <bpmn:outgoing>Flow_0ikiq0i</bpmn:outgoing>
+    </bpmn:startEvent>
+    <bpmn:userTask id="Activity_1uzw3gd" name="Заполнение Исполнителей" camunda:asyncBefore="true" camunda:assignee="${initiator}" camunda:priority="150">
+      <bpmn:extensionElements>
+        <camunda:inputOutput>
+          <camunda:inputParameter name="actions">TAB0600_1_SAVE,TAB0600_1_EXIT</camunda:inputParameter>
+        </camunda:inputOutput>
+      </bpmn:extensionElements>
+      <bpmn:incoming>Flow_00cxqyx</bpmn:incoming>
+      <bpmn:outgoing>Flow_1p6yppz</bpmn:outgoing>
+    </bpmn:userTask>
+    <bpmn:sequenceFlow id="Flow_1p6yppz" sourceRef="Activity_1uzw3gd" targetRef="Gateway_14amk7d" />
+    <bpmn:scriptTask id="dataControl" name="Контроль данных" scriptFormat="groovy">
+      <bpmn:incoming>Flow_0c8mz5w</bpmn:incoming>
+      <bpmn:outgoing>Flow_02zt088</bpmn:outgoing>
+      <bpmn:script>/* 0600.1 Script Task "Контроль данных" (dataControl) */
+// JsonBuilder - для преобразования объектов Groovy (Map, List, POGO) в строку формата JSON
+import groovy.json.JsonBuilder
+
+def log = org.slf4j.LoggerFactory.getLogger("${processCode}_dataControl")
+def processInstanceId = execution.getProcessInstanceId()
+
+log.info("PROCESS [{}]: --- Starting validation script ---", processInstanceId)
+
+// --- 2. ПОЛУЧЕНИЕ И ДИАГНОСТИКА ВХОДНОГО ДОКУМЕНТА ---
+def hasErrors = false //Изначально ошибки нет. 
+def errorMessage = ""
+def errorJsonMap = [:]
+
+// Получаем JSON как строку
+def baseDocumentJson = execution.getVariable('baseDocument')
+// Логируем ПОЛНЫЙ JSON, который пришел от сервиса.
+log.info("PROCESS [{}]: baseDocumentJson: {} Class: {}", processInstanceId, baseDocumentJson, baseDocumentJson?.getClass())
+
+// Парсим JSON. Если baseDocumentJson пустой или некорректный, S() вернет null.
+def documentData = baseDocumentJson ? S(baseDocumentJson) : null
+log.info("PROCESS [{}]: documentData: {} Class: {}", processInstanceId, documentData, documentData?.getClass())
+if (documentData == null) {
+  log.error("PROCESS [{}]: Failed to parse 'baseDocument' JSON or it is null. Aborting script.", processInstanceId)
+  // Формируем сообщение об ошибке
+  hasErrors = true
+  execution.setVariable("hasErrors", hasErrors)
+  errorMessage = "Критическая ошибка: не удалось получить или обработать данные документа."
+  throw new org.camunda.bpm.engine.delegate.BpmnError("ERROR", errorMessage)
+  //errorJsonMap = ["ERROR_MESSAGE": errorMessage]
+  //execution.setVariable("errorMap", new JsonBuilder(errorJsonMap).toString())
+  //return; // Прерываем выполнение скрипта
+}
+
+// --- 3. БЕЗОПАСНОЕ ИЗВЛЕЧЕНИЕ ДАННЫХ  ---
+// Этот блок гарантирует, что переменные всегда будут иметь значение.
+log.info("PROCESS [{}]: Extracting data...", processInstanceId)
+//documentData - это объект Camunda Spin (JSON)
+
+def settingAttributes = []
+def dataNode = documentData.hasProp("data") ? documentData.prop("data") : null
+if (dataNode != null) {
+  log.info("PROCESS [{}] dataNode: {} Class: {}", processInstanceId, dataNode, dataNode.getClass())
+  if (dataNode.hasProp("attributes") &amp;&amp; dataNode.prop("attributes").hasProp("APPROVER_SETTING")) {
+    def settingNode = dataNode.prop("attributes").prop("APPROVER_SETTING")
+    if (settingNode.isArray()) {
+      settingAttributes = settingNode.elements()
+    }
+  }
+      
+  if (settingAttributes.isEmpty()) {
+    log.warn("PROCESS [{}]: APPROVER_SETTING attributes list is missing or empty.", processInstanceId)
+    errorMessage = "В динамической таблице 'Настройка исполнителей' отсутствуют данные"
+  }
+
+} else {
+  log.warn("PROCESS [{}]: 'data' node not found in document.", processInstanceId)
+  errorMessage = "В документе отсутствуют данные"
+}
+
+if (errorMessage != "") {
+  // Формируем сообщение об ошибке
+  hasErrors = true
+  execution.setVariable("hasErrors", hasErrors)
+  throw new org.camunda.bpm.engine.delegate.BpmnError("ERROR", errorMessage)
+  //errorJsonMap = ["ERROR_MESSAGE": errorMessage]
+  //execution.setVariable("errorMap", new JsonBuilder(errorJsonMap).toString())
+  //return; // Прерываем выполнение скрипта
+}
+
+// --- 4. ОСНОВНАЯ ЛОГИКА ВАЛИДАЦИИ ---
+log.info("PROCESS [{}]: Starting main validation logic for attributes...", processInstanceId)
+
+//Пока только минимальные проверки на наличие Согласующих на необходимых этапах
+def errorList = []
+//Создаем Map для перечня необходимых Этапов для каждого Типа заявки (документа)
+def mapSetups = 
+  [
+    //Обязательные этапы для "Комитет IT BC"
+    ('IC'): ["FIN_FUNC_EXPERT","BUDGET_CONTROL","SECRETARY_IC"],
+    //Обязательные этапы для "Инвестиционный комитет (включая утверждение вне ИК)"
+    ('ITBC'): ["FIN_FUNC_EXPERT","BUDGET_CONTROL","IT_BC_PREPARE","IT_BC_APPROVE","SECRETARY_IC"]
+  ]
+
+//Цикл по Типам и затем цикл по Этапам:
+mapSetups.each { typeCode, stageList -&gt;
+  println "Тип: ${typeCode}"
+  
+  stageList.each { stageCode -&gt;
+    println "Этапы: ${stageCode}"
+  }
+}
+
+//Создаем Set для отслеживания уникальных пар
+def seenPairs = [] as Set 
+
+log.info("PROCESS [{}]: settingAttributes: {} Class: {}", processInstanceId, settingAttributes, settingAttributes?.getClass())
+for (int i = 0; i &lt; settingAttributes.size(); i++) {
+  def attr = settingAttributes[i]
+
+  // Извлекаем значения безопасно
+  def typeObj = attr.hasProp("ABB0600_REQUEST_TYPE") ? attr.prop("ABB0600_REQUEST_TYPE") : null
+  def stageObj = attr.hasProp("ABB0600_STAGE") ? attr.prop("ABB0600_STAGE") : null
+  def approverObj = attr.hasProp("ABB0600_APPROVER") ? attr.prop("ABB0600_APPROVER") : null
+
+  def missingAttributes = []
+
+  // Получаем строковые значения
+  def rowTypeCode = typeObj?.hasProp("code") ? typeObj.prop("code").stringValue() : null
+  def rowStageCode = stageObj?.hasProp("code") ? stageObj.prop("code").stringValue() : null
+  def rowApproverName = approverObj?.hasProp("name") ? approverObj.prop("name").stringValue() : null
+
+  /*************************/
+  // Проверка ПОКА на дубликаты для ТРЕХ значений rowTypeCode, rowStageCode, rowApproverName (только если поля заполнены)
+  // Потом сделаем проверки для ДВУХ значений rowTypeCode и rowStageCode, но надо проверять значение assignment_type (Тип назначения) из LDB0600_SETUP_STAGES
+  if (rowTypeCode &amp;&amp; rowStageCode &amp;&amp; rowStageCode) {
+    def currentPair = "${rowTypeCode}|${rowStageCode}|${rowApproverName}"
+    
+    if (seenPairs.contains(currentPair)) {
+      errorList.add("- Строка ${i + 1}: дублирующая настройка для Этапа [${rowStageCode}], Типа [${rowTypeCode}] и Исполнителя [${rowApproverName}].")
+    } else {
+      seenPairs.add(currentPair)
+    }
+  }
+  /*************************/
+  
+  // Валидация на наличие данных в строке
+  if (!rowTypeCode) missingAttributes.add("Тип запроса")
+  if (!rowStageCode) missingAttributes.add("Этап")
+  if (!rowApproverName) missingAttributes.add("Исполнитель")
+    
+  if (missingAttributes) {
+      errorList.add("- Строка ${i + 1}: не заполнены поля [${missingAttributes.join(', ')}].")
+  }
+  
+  // Контроль заполнения обязательных этапов для всх Типов
+  // Удаляем текущую настройку из mapSetups
+  mapSetups.each { typeCode, stageList -&gt;
+    if (typeCode == rowTypeCode) {
+        // Удаляем rowStageCode, если он есть в списке этого типа
+        stageList.removeIf { stageCode -&gt; stageCode == rowStageCode }
+    }
+  }
+}
+log.info("PROCESS [{}]: mapSetups: {} ", processInstanceId, mapSetups)
+
+// Собираем ошибки по ненайденным обязательным этапам
+mapSetups.each { typeCode, stageList -&gt;
+  if (!stageList.isEmpty()) {
+    // stageList содержит те этапы, которые не встретились в настройках
+    errorList.add("- Тип [${typeCode}]: отсутствуют настройки для этапов: [${stageList.join(', ')}].")
+  }
+}
+
+// --- 5. ФОРМИРОВАНИЕ ИТОГОВЫХ ПЕРЕМЕННЫХ ДЛЯ ПРОЦЕССА ---
+if (!errorList.isEmpty()) {
+  hasErrors = true
+  errorMessage = "Обнаружены следующие ошибки:\n" + errorList.join('\n')
+  throw new org.camunda.bpm.engine.delegate.BpmnError("ERROR", errorMessage)
+  //errorJsonMap = ["ERROR_MESSAGE": errorMessage]
+  //log.info("PROCESS [{}]: Заполнение errorJsonMap: [{}] ", processInstanceId, errorJsonMap)
+
+}
+
+//Если в форме документа сохранена информация об ошибке, а теперь ошибки нет, то чистим значение ERROR_MESSAGE
+def oldErrorValue = dataNode.prop("attributes").hasProp("ERROR_MESSAGE") ? dataNode.prop("attributes").prop("ERROR_MESSAGE").stringValue() : ""
+if (oldErrorValue != "" &amp;&amp; errorMessage == "") {
+  errorJsonMap = new JsonBuilder(["ERROR_MESSAGE": ""]).toString()
+  execution.setVariableLocal("body", errorJsonMap)
+  
+  //Общие Local переменные для вызова метода обновления атрибутов Документа
+  execution.setVariableLocal("serviceName", "documents")
+  execution.setVariableLocal("method", "PUT")
+  
+  fullPath = "private/documents/${entityGuid}/_attributes"
+  execution.setVariableLocal("path", fullPath)
+  try {
+    //log.info("PROCESS [{}] Clear ERROR_MESSAGE fullPath: {} body: {}", processInstanceId, fullPath, errorJsonMap)
+    restClient.execute(execution)
+  
+  } catch (Exception e) {
+    log.info("PROCESS [{}] Error call fullPath: {} body: {}", processInstanceId, fullPath, errorJsonMap)
+    errorMessage = "Не удалось очистить атрибут ERROR_MESSAGE"
+    throw new org.camunda.bpm.engine.delegate.BpmnError("ERROR", errorMessage)
+  }  
+}
+
+//После добавления  Link Intermediate Event переменная hasErrors больше не используется в процессе.
+//execution.setVariable("hasErrors", hasErrors) //Обязательно выполнить, даже если hasErrors false!
+//log.info("PROCESS [{}]: errorJsonMap: {} ", processInstanceId, errorJsonMap)
+//execution.setVariable("errorMap", new JsonBuilder(errorJsonMap).toString())
+
+log.info("PROCESS [{}]: --- End setVariables hasErrors: [{}] ---", processInstanceId, hasErrors)</bpmn:script>
+    </bpmn:scriptTask>
+    <bpmn:endEvent id="Event_172g14l">
+      <bpmn:incoming>Flow_1s2rb0i</bpmn:incoming>
+    </bpmn:endEvent>
+    <bpmn:serviceTask id="Activity_0bkylmv" name="Запрос атрибутов документа" camunda:delegateExpression="#{restClient}">
+      <bpmn:extensionElements>
+        <camunda:inputOutput>
+          <camunda:inputParameter name="serviceName">documents</camunda:inputParameter>
+          <camunda:inputParameter name="path">/private/documents/{guid}</camunda:inputParameter>
+          <camunda:inputParameter name="pathParams">
+            <camunda:map>
+              <camunda:entry key="guid">${entityGuid}</camunda:entry>
+            </camunda:map>
+          </camunda:inputParameter>
+          <camunda:inputParameter name="method">GET</camunda:inputParameter>
+          <camunda:inputParameter name="resultVarName">baseDocument</camunda:inputParameter>
+        </camunda:inputOutput>
+      </bpmn:extensionElements>
+      <bpmn:incoming>Flow_0ox7fdj</bpmn:incoming>
+      <bpmn:outgoing>Flow_0c8mz5w</bpmn:outgoing>
+    </bpmn:serviceTask>
+    <bpmn:sequenceFlow id="flowToRevise" name="на Доработку" sourceRef="Activity_13yq0ue" targetRef="getDocAttributes">
+      <bpmn:conditionExpression xsi:type="bpmn:tFormalExpression">${taskOutcome == 'TAB0600_1_REVISE'}</bpmn:conditionExpression>
+    </bpmn:sequenceFlow>
+    <bpmn:userTask id="Activity_13yq0ue" name="Обзор" default="Flow_123kapt" camunda:asyncBefore="true" camunda:assignee="${initiator}" camunda:priority="150">
+      <bpmn:extensionElements>
+        <camunda:inputOutput>
+          <camunda:inputParameter name="actions">TAB0600_1_REVISE,TAB0600_1_COMPLETED</camunda:inputParameter>
+        </camunda:inputOutput>
+      </bpmn:extensionElements>
+      <bpmn:incoming>Flow_0xiso5z</bpmn:incoming>
+      <bpmn:outgoing>Flow_123kapt</bpmn:outgoing>
+      <bpmn:outgoing>flowToRevise</bpmn:outgoing>
+    </bpmn:userTask>
+    <bpmn:sequenceFlow id="Flow_123kapt" sourceRef="Activity_13yq0ue" targetRef="Activity_1bhy94t" />
+    <bpmn:serviceTask id="getDocAttributes" name="Запрос атрибутов документа" camunda:delegateExpression="#{restClient}">
+      <bpmn:documentation>Заполнение baseDocument</bpmn:documentation>
+      <bpmn:extensionElements>
+        <camunda:inputOutput>
+          <camunda:inputParameter name="serviceName">documents</camunda:inputParameter>
+          <camunda:inputParameter name="path">/private/documents/{guid}</camunda:inputParameter>
+          <camunda:inputParameter name="pathParams">
+            <camunda:map>
+              <camunda:entry key="guid">${entityGuid}</camunda:entry>
+            </camunda:map>
+          </camunda:inputParameter>
+          <camunda:inputParameter name="method">GET</camunda:inputParameter>
+          <camunda:inputParameter name="resultVarName">baseDocument</camunda:inputParameter>
+        </camunda:inputOutput>
+        <camunda:executionListener event="end">
+          <camunda:script scriptFormat="groovy">import org.slf4j.LoggerFactory
+def log = LoggerFactory.getLogger("${processCode}_end_getDocAttributes")
+def processInstanceId = execution.getProcessInstanceId()</camunda:script>
+        </camunda:executionListener>
+      </bpmn:extensionElements>
+      <bpmn:incoming>flowToRevise</bpmn:incoming>
+      <bpmn:incoming>Flow_0ikiq0i</bpmn:incoming>
+      <bpmn:outgoing>Flow_1jbyr7a</bpmn:outgoing>
+    </bpmn:serviceTask>
+    <bpmn:serviceTask id="getRequestUsersService" name="Запрос LDB0600_REQUEST_USERS" camunda:delegateExpression="#{restClient}">
+      <bpmn:extensionElements>
+        <camunda:inputOutput>
+          <camunda:inputParameter name="serviceName">dictionaries</camunda:inputParameter>
+          <camunda:inputParameter name="path">/private/dictionaries/LDB0600_REQUEST_USERS/values?onlyData=true&amp;all=true</camunda:inputParameter>
+          <camunda:inputParameter name="method">GET</camunda:inputParameter>
+          <camunda:inputParameter name="resultVarName">requestUsers</camunda:inputParameter>
+        </camunda:inputOutput>
+        <camunda:executionListener event="start">
+          <camunda:script scriptFormat="groovy">def log = org.slf4j.LoggerFactory.getLogger("${processCode}_getRequestUsersService")
+def processInstanceId = execution.getProcessInstanceId()
+log.info("PROCESS [{}] ---Start---", processInstanceId)</camunda:script>
+        </camunda:executionListener>
+      </bpmn:extensionElements>
+      <bpmn:incoming>Flow_1jbyr7a</bpmn:incoming>
+      <bpmn:outgoing>Flow_0qtlkk0</bpmn:outgoing>
+    </bpmn:serviceTask>
+    <bpmn:scriptTask id="requestUsersControl" name="Контроль requestUsers" scriptFormat="groovy">
+      <bpmn:documentation>Контроль requestUsers</bpmn:documentation>
+      <bpmn:incoming>Flow_0qtlkk0</bpmn:incoming>
+      <bpmn:outgoing>Flow_00cztzx</bpmn:outgoing>
+      <bpmn:script>/* 0600.1 Script Task "Контроль значений Справочника" (requestUsersControl) */
+// --- 1. НАСТРОЙКА ЛОГИРОВАНИЯ ---
+def log = org.slf4j.LoggerFactory.getLogger("${processCode}_requestUsersControl")
+def processInstanceId = execution.getProcessInstanceId()
+
+log.info("PROCESS [{}] --- Starting ---", processInstanceId)
+
+//requestUsers (class org.camunda.spin.impl.json.jackson.JacksonJsonNode) - Определили в Service Task
+log.info("PROCESS [{}] Check requestUsers: {} Class: {}", processInstanceId, requestUsers, requestUsers?.getClass())
+
+/*** Убрал лишние преобразования! ***/
+
+def dataAttributes = [] //Создали пустой список
+def dataNode = requestUsers.hasProp("data") ? requestUsers.prop("data") : null
+
+if (dataNode &amp;&amp; dataNode.isArray()) {
+  // Получаем элементы как SpinList
+  def elements = dataNode.elements()
+  
+  if (elements.isEmpty()) {
+    log.warn("PROCESS [{}]: Dictionary LDB0600_REQUEST_USERS is empty.", processInstanceId)
+  } else {
+    // Итерируемся и создаем простые Map объекты
+    elements.each { attr -&gt;
+      def map = [
+        doc_number   : attr.hasProp("doc_number") &amp;&amp; !attr.prop("doc_number").isNull() ? attr.prop("doc_number").stringValue() : null,
+        request_code : attr.hasProp("request_code") ? attr.prop("request_code").stringValue() : null,
+        stage_code   : attr.hasProp("stage_code")   ? attr.prop("stage_code").stringValue()   : null,
+        // Если user_id число — используем value().toString(), если строка — stringValue()
+        user_id      : attr.hasProp("user_id")      ? attr.prop("user_id").value().toString() : null,
+        // Сохраним еще и значение guid
+        guid         : attr.hasProp("guid")         ? attr.prop("guid").value().toString() : null
+      ]
+      //Вместо dataAttributes.add(map) 
+      dataAttributes &lt;&lt; map
+      log.info("PROCESS [{}] Added to collection (map): {}", processInstanceId, map)
+    }
+  }
+} else {
+  log.warn("PROCESS [{}]: Dictionary LDB0600_REQUEST_USERS missing or not array.", processInstanceId)
+}
+
+//Теперь в dataAttributes лежат строки и мапы, а не внутренние объекты библиотеки Spin, которые часто «пропадают» при передаче между задачами.
+execution.setVariable("dataAttributes", dataAttributes)
+log.info("PROCESS [{}] dataAttributes: {}", processInstanceId, dataAttributes)
+
+log.info("PROCESS [{}] --- End ---", processInstanceId)</bpmn:script>
+    </bpmn:scriptTask>
+    <bpmn:sequenceFlow id="Flow_00cztzx" sourceRef="requestUsersControl" targetRef="restClient_Check" />
+    <bpmn:sequenceFlow id="Flow_1x5zvwa" sourceRef="restClient_Check" targetRef="prepareApproverSetting" />
+    <bpmn:scriptTask id="restClient_Check" name="Анализ restClient" scriptFormat="groovy">
+      <bpmn:documentation>Рекомендация ИИ. Контроль доступных методов Delegate: restClient (только для тестирования)</bpmn:documentation>
+      <bpmn:incoming>Flow_00cztzx</bpmn:incoming>
+      <bpmn:outgoing>Flow_1x5zvwa</bpmn:outgoing>
+      <bpmn:script>/* Script Task "Анализ restClient" (restClient_Check) */
+//Интроспекция бина прямо «на лету» через Groovy
+//Он выведет в лог все доступные методы restClient,
+// что поможет понять, как именно к нему обращаться.
+def log = org.slf4j.LoggerFactory.getLogger("${processCode}_restClient_Check")
+
+// 1. Получаем сам бин из контекста
+def bean = restClient 
+
+log.info("CLASS: {}", bean.getClass().getName())
+
+// 2. Выводим все публичные методы бина
+bean.getClass().getMethods().each { method -&gt;
+    // Фильтруем, чтобы не смотреть стандартные методы Object
+    if (!method.declaringClass.name.contains("java.lang.Object")) {
+        log.info("METHOD: {} (args: {})", method.name, method.parameterTypes)
+    }
+}</bpmn:script>
+    </bpmn:scriptTask>
+    <bpmn:scriptTask id="prepareDictionary" name="Prepare Dictionary" scriptFormat="groovy">
+      <bpmn:incoming>Flow_02zt088</bpmn:incoming>
+      <bpmn:outgoing>Flow_1gip3kt</bpmn:outgoing>
+      <bpmn:script>/* 0600.1 Script Task "Prepare Dictionary" (prepareDictionary) */
+// JsonSlurper используется внутри Groovy-скриптов для парсинга JSON-строк в объекты Groovy (Map или List)
+import groovy.json.JsonSlurper
+// JsonBuilder - для преобразования объектов Groovy (Map, List, POGO) в строку формата JSON
+import groovy.json.JsonBuilder
+// JsonOutput - выполняет ту же задачу (превращает объект в JSON-строку)
+import groovy.json.JsonOutput
+
+//Заполнение справочника LDB0600_REQUEST_USERS
+def log = org.slf4j.LoggerFactory.getLogger("${processCode}_prepareDictionary")
+def processInstanceId = execution.getProcessInstanceId()
+log.info("PROCESS [{}] ---Start--", processInstanceId)
+
+def hasErrors = false //Изначально ошибки нет.
+
+// Получим текущие значение атрибутов из baseDocument (определили в Service Task)
+def baseDocument = execution.getVariable('baseDocument') //Использовать S() необязательно, baseDocument уже Spin-объект
+
+// Пустой Spin-объект S({}). Добавлять свойства через .prop()
+// Пустой Spin-массив S([]). Добавлять свойства через .append()
+def data = (baseDocument.hasProp("data") &amp;&amp; !baseDocument.prop("data").isNull()) ? baseDocument.prop("data") : S("{}")
+log.info("PROCESS [{}] BEFORE data: {}", processInstanceId, data)
+
+// Получаем Номер текущего Документа (projectNumber) из которого извлекаем doc_number
+def doc_number = (data.hasProp("projectNumber") &amp;&amp; !data.prop("projectNumber").isNull()) ? data.prop("projectNumber").stringValue().trim() : ""
+
+def docAttributes = (data.hasProp("attributes") &amp;&amp; !data.prop("attributes").isNull()) ? 
+                    data.prop("attributes") : 
+                    S("{}")
+log.info("PROCESS [{}] BEFORE docAttributes: {}", processInstanceId, docAttributes)
+   
+// Получаем текущий список APPROVER_SETTING или создаем пустой Spin-массив (JacksonJsonNode)
+def approverListSpin = (docAttributes.hasProp("APPROVER_SETTING") &amp;&amp; !docAttributes.prop("APPROVER_SETTING").isNull()) ? 
+                       docAttributes.prop("APPROVER_SETTING") : 
+                       S("[]")
+
+def allRows = []
+// Проходим по каждому элементу массива
+approverListSpin.elements().each { approver -&gt; // approver — это тоже Spin-объект
+  // Cоздаем строки в справочнике LDB0600_REQUEST_USERS (Map объекты ???)
+  try {
+      def row = [
+          "doc_number"   : doc_number,
+          "request_code" : approver.prop("ABB0600_REQUEST_TYPE").prop("code").stringValue(),
+          "stage_code"   : approver.prop("ABB0600_STAGE").prop("code").stringValue(),
+          "user_id"      : approver.prop("ABB0600_APPROVER").prop("login").stringValue()
+      ]
+      allRows &lt;&lt; row
+  
+  } catch (Exception e) {
+      log.error("PROCESS [{}]: Ошибка парсинга строки согласующих: {}", processInstanceId, e.getMessage())
+      hasErrors = true
+  }
+
+}
+log.info("PROCESS [{}] allRows: {}", processInstanceId, allRows)
+
+/* Должна быть структура вида:
+{
+  "data": [
+    {
+      "doc_number"  : "1",
+      "request_code": "INVESTMENTS",
+      "stage_code"  : "EXPERT",
+      "user_id"     : "ipanchenko"
+    },
+    {
+      "doc_number"  : "1",
+      "request_code": "INVESTMENTS",
+      "stage_code"  : "VIZIR",
+      "user_id"     : "ipanchenko"
+    }
+  ]
+}
+*****************************/
+// ФОРМИРУЕМ ИТОГОВУЮ СТРУКТУРУ (Map с ключом "data")
+def dictionaryMap = ["data": allRows]
+
+// Сохраняем в переменную процесса как JSON-объект
+// Это гарантирует, что Camunda поймет структуру { "data": [...] }
+import org.camunda.bpm.engine.variable.Variables
+
+def jsonValue = Variables.objectValue(dictionaryMap)
+    .serializationDataFormat("application/json")
+    .create()
+
+execution.setVariable("dictionaryMap", jsonValue)
+
+// И сразу контроль dictionaryMap
+def dictionaryMapCheck = execution.getVariable('dictionaryMap')
+log.info("PROCESS [{}]: dictionaryMap: [{}] Class: {}", processInstanceId, dictionaryMap, dictionaryMap?.getClass())
+
+//Дополнительно подготовим guids (array) для выполнения DELETE private/dictionaries/LDB0600_REQUEST_USERS/values/temp
+// Стандартный подход
+def resultList = []
+def resultMap = [:]
+
+/*
+for (item in dataAttributes) {
+    resultList.add(item.guid)
+}
+log.info("PROCESS [{}] Цикл resultList: {} ", processInstanceId, resultList)
+*/
+
+// С использованием Spread-dot
+//resultList= dataAttributes*.guid
+// Самый надежный вариант (удаляет null и пустые строки)
+resultList = dataAttributes*.guid.findAll { it != null &amp;&amp; it != "" }
+log.info("PROCESS [{}] Spread-dot resultList: {} ", processInstanceId, resultList)
+
+// Создаем Map с одним ключом "guids"
+resultMap = [guids: resultList] 
+log.info("PROCESS [{}] resultMap: {} ", processInstanceId, resultMap)
+//Если вы хотите убедиться, что данные выглядят правильно для API, используйте JsonOutput при выводе в лог:
+log.info("PROCESS [{}] JSON resultMap: {} ", processInstanceId, JsonOutput.toJson(resultMap))
+
+// Сохраняем для использования в Service Task (не знаю какой правильный!)
+execution.setVariable("guidList", resultList) //Var.1
+execution.setVariable("guidMap", resultMap) //Var.2 (похоже, нужен Map)
+
+//Var.3 Собираем строку вида: guids=id1&amp;guids=id2
+def queryPath = resultList.collect { "guids=${it}" }.join("&amp;")
+log.info("PROCESS [{}] queryPath: {} ", processInstanceId, queryPath)
+// Сохраняем в переменную
+execution.setVariable("deleteQuery", queryPath)
+
+execution.setVariable("hasErrors", hasErrors) //Обязательно выполнить, даже если hasErrors false!
+
+log.info("PROCESS [{}] ---End---", processInstanceId)</bpmn:script>
+    </bpmn:scriptTask>
+    <bpmn:serviceTask id="updateDraftDictionary" name="Update Draft Dictionary" camunda:delegateExpression="#{restClient}">
+      <bpmn:documentation>POST /private/dictionaries/LDB0600_REQUEST_USERS/values - Создание новых значений в Черновике (status = 'NEW') из dictionaryMap сформированного  в Script Task prepareDictionary.</bpmn:documentation>
+      <bpmn:extensionElements>
+        <camunda:inputOutput>
+          <camunda:inputParameter name="serviceName">dictionaries</camunda:inputParameter>
+          <camunda:inputParameter name="path">/private/dictionaries/LDB0600_REQUEST_USERS/values</camunda:inputParameter>
+          <camunda:inputParameter name="method">POST</camunda:inputParameter>
+          <camunda:inputParameter name="body">${dictionaryMap}</camunda:inputParameter>
+        </camunda:inputOutput>
+      </bpmn:extensionElements>
+      <bpmn:incoming>Flow_002mp3g</bpmn:incoming>
+      <bpmn:outgoing>Flow_0j7e87l</bpmn:outgoing>
+    </bpmn:serviceTask>
+    <bpmn:sequenceFlow id="Flow_1jbyr7a" sourceRef="getDocAttributes" targetRef="getRequestUsersService" />
+    <bpmn:sequenceFlow id="Flow_1gip3kt" sourceRef="prepareDictionary" targetRef="createDraftFromPublic" />
+    <bpmn:sequenceFlow id="Flow_0qtlkk0" sourceRef="getRequestUsersService" targetRef="requestUsersControl" />
+    <bpmn:scriptTask id="prepareApproverSetting" name="Prepare Approver Setting" scriptFormat="groovy">
+      <bpmn:documentation>Подготовка approverList - данные для обновления Динамической таблицы APPROVER_SETTING в текущем Документе</bpmn:documentation>
+      <bpmn:incoming>Flow_1x5zvwa</bpmn:incoming>
+      <bpmn:outgoing>Flow_1q89t6t</bpmn:outgoing>
+      <bpmn:script>/* 0600.1 Script Task "Prepare Approver Setting" (prepareApproverSetting) */
+// JsonSlurper используется внутри Groovy-скриптов для парсинга JSON-строк в объекты Groovy (Map или List)
+import groovy.json.JsonSlurper
+// JsonBuilder - для преобразования объектов Groovy (Map, List, POGO) в строку формата JSON
+import groovy.json.JsonBuilder
+
+/* Подготовка approverList - данные для обновления Динамической таблицы "APPROVER_SETTING" в текущем Документе */
+def log = org.slf4j.LoggerFactory.getLogger("${processCode}_prepareApproverSetting")
+def processInstanceId = execution.getProcessInstanceId()
+log.info("PROCESS [{}] ---Start--", processInstanceId)
+
+def errorMessage = "" //Изначально ошибки нет.
+
+//Получим текущие значение атрибутов из baseDocument (определили в Service Task)
+def docAttributes = S(execution.getVariable('baseDocument')).prop("data").prop("attributes")
+log.info("PROCESS [{}] BEFORE docAttributes: {}", processInstanceId, docAttributes)
+
+//Получим текущее значение атрибута APPROVER_SETTING !!!Только для контроля!!!
+def approverSetting = docAttributes.hasProp("APPROVER_SETTING") ? docAttributes.prop("APPROVER_SETTING") : []
+log.info("PROCESS [{}] BEFORE approverSetting: {} Class: {}", processInstanceId, approverSetting, approverSetting?.getClass())
+
+/* Сразу получим ВСЕ значения Справочника Типов заявки и Этапов ******************
+ * Поиск в цикле с помощью метода: 
+ * /private/dictionaries/LDB0600_REQUEST_TYPES/values?onlyData=true&amp;fields[0].code=code&amp;fields[0].value=${code}
+ * все-равно может вернуть несколько значений, т.к. выборка производится по контексту,
+ * а не по точному совпадению значения value=${code}.
+ * И поэтому потом все-равно приходится выбирать запись по условию:
+ * item = dataMap.data.find { it.code == code }
+**********************************************************************************/
+
+def requestDataMap = [:]
+def stageDataMap = [:]
+def fullPath = ""
+
+//Общие Local переменные для вызова метода значений Справочника
+execution.setVariableLocal("serviceName", "dictionaries")
+execution.setVariableLocal("method", "GET")
+execution.setVariableLocal("resultVarName", "resultData") //В resultData попадет результат вызова метода
+
+//Определяем ВСЕ значения Типа заявки из Справочника LDB0600_REQUEST_TYPES и сохраняем в requestDataMap
+fullPath = "/private/dictionaries/LDB0600_REQUEST_TYPES/values?onlyData=true&amp;all=true"
+execution.setVariableLocal("path", fullPath)
+try {
+  restClient.execute(execution)
+  requestDataMap = S(execution.getVariable("resultData")).mapTo(java.util.Map.class)
+  log.info("PROCESS [{}] requestDataMap: {}", processInstanceId, requestDataMap)
+} catch (Exception e) {
+  requestDataMap = null
+  log.info("PROCESS [{}] Error call fullPath: {}", processInstanceId, fullPath)
+}
+
+//Определяем ВСЕ значения Этапов из Справочника LDB0600_STAGES и сохраняем в stageDataMap
+fullPath = "/private/dictionaries/LDB0600_STAGES/values?onlyData=true&amp;all=true"
+execution.setVariableLocal("path", fullPath)
+try {
+  restClient.execute(execution)
+  stageDataMap = S(execution.getVariable("resultData")).mapTo(java.util.Map.class)
+  log.info("PROCESS [{}] stageDataMap: {}", processInstanceId, stageDataMap)
+} catch (Exception e) {
+  stageDataMap = null
+  log.info("PROCESS [{}] Error call fullPath: {}", processInstanceId, fullPath)
+}
+
+//Получим текущие значение dataAttributes (получены ранее в Script Task requestUsersControl)
+def dataAttributes = execution.getVariable("dataAttributes")
+log.info("PROCESS [{}] dataAttributes: {} Class: {}", processInstanceId, dataAttributes, dataAttributes?.getClass())
+
+// Используем List вместо массива для лучшей поддержки JSON-сериализации
+// approverList - Создаем как ArrayList, чтобы бращаться к его полям через Spin
+//def approverList = new ArrayList()
+def approverList = [] // это синтаксический сахар Groovy для создания пустого списка (экземпляр java.util.ArrayList)
+
+dataAttributes.eachWithIndex { attr, index -&gt;
+
+  log.debug("PROCESS [{}] Обработка индекса: {}", processInstanceId, index)
+
+  // Объект для хранения результатов текущей итерации
+  def iterationResult = [:] //Map
+  def dataMap = [:]
+  def item = [:]
+  def newRequestType = [:]
+  def newStage = [:]
+  def newApprover = [:]
+
+  //Общие переменные
+  //Остальные зависят от Справочника. Пока пустые
+  def code = ""
+  
+  // Определяем значения Типа заявки из Справочника LDB0600_REQUEST_TYPES (сохранено в requestDataMap)
+  // Ищем объект в списке requestDataMap, у которого code совпадает с attr.request_code
+  item = requestDataMap?.data?.find { it.code == attr.request_code }
+
+  //Контроль существования в Справочнике значения attr.request_code
+  if (!item) {
+      log.error("PROCESS [{}] Record with code {} not found in requestDataMap", processInstanceId, attr.request_code)
+      errorMessage = "В Справочнике Типов заявок не найдено значение для code = '${attr.request_code}'. Заведите Инцидент."
+      throw new org.camunda.bpm.engine.delegate.BpmnError("ERROR", errorMessage)
+  }
+  
+  //Заполняем newRequestType
+  newRequestType = [code: item.code
+                   ,guid: item.guid
+                   ,name: item.displayTitle
+                   ,value: item.guid //Так по факту
+                   ,isParent: false
+                   ,displayTitle: item.displayTitle
+                   ]
+      
+
+  //Определяем значения Этапа из Справочника LDB0600_STAGES (сохранено в stageDataMap)
+  // Ищем объект в списке stageDataMap, у которого code совпадает с attr.request_code
+  item = stageDataMap?.data?.find { it.code == attr.stage_code }
+
+  // Рекомендация ИИ: Проверка на случай, если запись не найдена
+  if (item == null) {
+      log.error("PROCESS [{}] Record with code {} not found in results", processInstanceId, attr.stage_code)
+      errorMessage = "В Справочнике Этапов не найдено значение для code = '${attr.stage_code}'. Заведите Инцидент."
+      //execution.setVariable("errorMap", new JsonBuilder(["ERROR_MESSAGE": errorMessage]).toString())
+      throw new org.camunda.bpm.engine.delegate.BpmnError("ERROR", errorMessage)
+  }
+
+  //Заполняем newStage: class java.util.LinkedHashMap
+  newStage = [code: item.code
+             ,guid: item.guid
+             ,name: item.displayTitle
+             ,value: item.guid //Так по факту
+             ,isParent: false
+             ,displayTitle: item.displayTitle
+             ]
+  log.info("PROCESS [{}] newStage: {} Class: {}", processInstanceId, newStage, newStage?.getClass())           
+    
+
+  //Вызов 3. Определяем информацию об Исполнителе (рекомендация Ильи Першина, см. чат "Аналитика" от 02.02.2026)
+  code = attr.user_id //Договорились хранить там login
+  fullPath = "/private/users/${code}/employee"
+  execution.setVariableLocal("path", fullPath)
+  execution.setVariableLocal("serviceName", "users")
+  execution.setVariableLocal("resultVarName", "userInfo") 
+
+  try {
+    restClient.execute(execution)
+    //Внутри цикла можно определять def userData (так ИИ утверждает!)
+    def userData = S(execution.getVariable("userInfo")).prop("data").mapTo(java.util.Map.class)
+    log.info("PROCESS [{}] Index {} fullPath: {} userData: {} Class: {}", processInstanceId, index, fullPath, userData, userData?.getClass())
+    
+    // Извлекаем глубокую вложенность: data -&gt; employee -&gt; person -&gt; fullName
+    def person = userData.employee?.person
+    def position = userData.employee?.position
+    def dept = userData.employee?.department
+    def pId = userData.employee?.personId
+    
+    //Заполняем newApprover: class java.util.LinkedHashMap. Обязательно использовать .toString() !!!
+    newApprover = [
+        name: "${person?.fullName} (${position} ${dept?.fullName})".toString(),
+        email: userData.email.toString(),
+        login: userData.login.toString(),
+        value: userData.login.toString(),
+        personId: pId.toString(),
+        displayTitle: person?.fullName.toString()
+    ]
+    log.info("PROCESS [{}] newApprover: {} Class: {}", processInstanceId, newApprover, newApprover?.getClass())
+    
+  } catch (Exception e) {
+      log.error("Error call 3 (User) at index {}: {}", index, e.message)
+      log.info("PROCESS [{}] Current fullPath: {}", processInstanceId, fullPath)
+  }
+
+  //Контроль существования User по значению attr.user_id (договорились хранить там login)
+  if (!newApprover) {
+      log.error("PROCESS [{}] User with user_id {} not found!", processInstanceId, attr.user_id)
+      errorMessage = "Не найден Сотрудник по значению Login: '${attr.user_id}'. Заведите Инцидент."
+      throw new org.camunda.bpm.engine.delegate.BpmnError("ERROR", errorMessage)
+  }
+
+
+  // --- ФОРМИРУЕМ СТРОКУ И ДОБАВЛЯЕМ В СПИСОК ---
+  // Здесь мы используем в точности те ключи, которые были в вашем примере
+  def row = [
+    "ABB0600_STAGE"       : newStage,
+    "ABB0600_APPROVER"    : newApprover,
+    "ABB0600_REQUEST_TYPE": newRequestType
+  ]
+  log.info("PROCESS [{}] Var 1. row: {} Class: {}", processInstanceId, row, row?.getClass())
+  
+  approverList &lt;&lt; row
+}
+
+// Сортировка списка approverList
+approverList.sort { a, b -&gt;
+    // Используем конкретные строковые поля для сравнения
+    a."ABB0600_REQUEST_TYPE".code &lt;=&gt; b."ABB0600_REQUEST_TYPE".code ?: 
+    a."ABB0600_STAGE".code &lt;=&gt; b."ABB0600_STAGE".code
+}
+
+//Контроль approverList: class java.util.ArrayList
+log.info("PROCESS [{}] approverList: {} Class: {}", processInstanceId, approverList, approverList?.getClass())
+
+/**********************************************************************************
+Чтобы обновить docAttributes (объект Spin), важно помнить: объекты Spin неизменяемы.
+Вы не можете просто «затолкнуть» новый список в старый docAttributes.
+Вам нужно собрать новую Map из всех атрибутов документа, заменить в ней APPROVER_SETTING
+**********************************************************************************/
+// 1. Конвертируем ВСЕ текущие атрибуты в docAttributes из Spin в обычный Groovy Map
+def attributesMap = new JsonSlurper().parseText(docAttributes.toString())
+
+// 2. Обновляем в этом Map наш список (уже измененный через &lt;&lt; newRow)
+attributesMap.APPROVER_SETTING = approverList
+//А заодно очищаем атрибут ERROR_MESSAGE в Документе (т.к. ошибок не было, раз добрались до конца скрипта)
+attributesMap.ERROR_MESSAGE = ""
+//Проверим Class attributesMap
+log.info("PROCESS [{}]: attributesMap Class: {}", processInstanceId, attributesMap.getClass())
+
+// Подсказка ИИ: Сохраняем как типизированное значение (TypedValue)
+// Это заставит Camunda использовать Byte-array даже для строки
+import org.camunda.bpm.engine.variable.Variables
+
+// Лучше передать саму Map attributesMap (а не attributesMapString), Camunda сама конвертирует её в JSON через Spin
+def attributesMapTypedValue = Variables.objectValue(attributesMap)
+    .serializationDataFormat("application/json") // Подсказка для движка
+    .create()
+
+execution.setVariable("attributesMap", attributesMapTypedValue)
+
+//И сразу контроль attributesMap
+def attributesMapCheck = execution.getVariable('attributesMap')
+log.info("PROCESS [{}]: attributesMapCheck: [{}] Class: {}", processInstanceId, attributesMapCheck, attributesMapCheck?.getClass())
+
+log.info("PROCESS [{}] ---End---", processInstanceId)</bpmn:script>
+    </bpmn:scriptTask>
+    <bpmn:sequenceFlow id="Flow_1q89t6t" sourceRef="prepareApproverSetting" targetRef="Activity_0ppgye2" />
+    <bpmn:sequenceFlow id="Flow_0c8mz5w" sourceRef="Activity_0bkylmv" targetRef="dataControl" />
+    <bpmn:serviceTask id="Activity_0ppgye2" name="Обновление документа (attributeMap)" camunda:delegateExpression="#{restClient}">
+      <bpmn:extensionElements>
+        <camunda:inputOutput>
+          <camunda:inputParameter name="serviceName">documents</camunda:inputParameter>
+          <camunda:inputParameter name="path">private/documents/{guid}/_attributes</camunda:inputParameter>
+          <camunda:inputParameter name="method">PUT</camunda:inputParameter>
+          <camunda:inputParameter name="pathParams">
+            <camunda:map>
+              <camunda:entry key="guid">${entityGuid}</camunda:entry>
+            </camunda:map>
+          </camunda:inputParameter>
+          <camunda:inputParameter name="body">${attributesMap}</camunda:inputParameter>
+        </camunda:inputOutput>
+      </bpmn:extensionElements>
+      <bpmn:incoming>Flow_1q89t6t</bpmn:incoming>
+      <bpmn:outgoing>Flow_0hew14m</bpmn:outgoing>
+    </bpmn:serviceTask>
+    <bpmn:sequenceFlow id="Flow_0hew14m" sourceRef="Activity_0ppgye2" targetRef="Activity_13lqxx3" />
+    <bpmn:serviceTask id="publishDictionary" name="Publish Dictionary" camunda:delegateExpression="#{restClient}">
+      <bpmn:documentation>PUT private/dictionaries/XXX/publish - Выполняем публикацию (из Черновика в основной Справочник)/ ВАЖНО! Указывается ИДЕНТИФИКАТОР Справочника (dictionaryId), см. BEEDOCS-5624</bpmn:documentation>
+      <bpmn:extensionElements>
+        <camunda:inputOutput>
+          <camunda:inputParameter name="serviceName">dictionaries</camunda:inputParameter>
+          <camunda:inputParameter name="path">private/dictionaries/${dictionaryId}/publish</camunda:inputParameter>
+          <camunda:inputParameter name="method">PUT</camunda:inputParameter>
+        </camunda:inputOutput>
+        <camunda:executionListener event="start">
+          <camunda:script scriptFormat="groovy">def log = org.slf4j.LoggerFactory.getLogger("publishDictionary")
+def processInstanceId = execution.getProcessInstanceId()
+log.info("PROCESS [{}] ---Start--- Check dictionaryId: {}", processInstanceId, execution.getVariable("dictionaryId"))</camunda:script>
+        </camunda:executionListener>
+      </bpmn:extensionElements>
+      <bpmn:incoming>Flow_0t9qsyn</bpmn:incoming>
+      <bpmn:outgoing>Flow_0fldd6k</bpmn:outgoing>
+    </bpmn:serviceTask>
+    <bpmn:sequenceFlow id="Flow_0fldd6k" sourceRef="publishDictionary" targetRef="Activity_046ks4h" />
+    <bpmn:serviceTask id="clearDraftDictionary" name="Clear Draft Dictionary" camunda:delegateExpression="#{restClient}">
+      <bpmn:documentation>DELETE private/dictionaries/values/temp?${deleteQuery} - Помечаем записи в Черновике как 'Архив' (status = 'DELETED'), чтобы при публикации предыдущие значения Справочника (по значению guid) были переведены в status = 'DELETED'</bpmn:documentation>
+      <bpmn:extensionElements>
+        <camunda:inputOutput>
+          <camunda:inputParameter name="serviceName">dictionaries</camunda:inputParameter>
+          <camunda:inputParameter name="path">private/dictionaries/values/temp?${deleteQuery}</camunda:inputParameter>
+          <camunda:inputParameter name="method">DELETE</camunda:inputParameter>
+        </camunda:inputOutput>
+        <camunda:executionListener event="start">
+          <camunda:script scriptFormat="groovy">def log = org.slf4j.LoggerFactory.getLogger("${processCode}_clearDraftDictionary")
+def processInstanceId = execution.getProcessInstanceId()
+log.info("PROCESS [{}] ---Start--", processInstanceId)
+
+</camunda:script>
+        </camunda:executionListener>
+      </bpmn:extensionElements>
+      <bpmn:incoming>Flow_0bkuncd</bpmn:incoming>
+      <bpmn:outgoing>Flow_002mp3g</bpmn:outgoing>
+    </bpmn:serviceTask>
+    <bpmn:sequenceFlow id="Flow_0bkuncd" sourceRef="createDraftFromPublic" targetRef="clearDraftDictionary" />
+    <bpmn:serviceTask id="createDraftFromPublic" name="Create Draft from Public" camunda:delegateExpression="#{restClient}">
+      <bpmn:documentation>POST /private/dictionaries/LDB0600_REQUEST_USERS/values/temp - Создание значений справочника в Черновике (dictionary_value_temp) из опубликованных (dictionary_value) с теми же значениями guid.</bpmn:documentation>
+      <bpmn:extensionElements>
+        <camunda:executionListener event="start">
+          <camunda:script scriptFormat="groovy">def log = org.slf4j.LoggerFactory.getLogger("${processCode}_createDraftFromPublic")
+def processInstanceId = execution.getProcessInstanceId()
+log.info("PROCESS [{}] ---Start--", processInstanceId)</camunda:script>
+        </camunda:executionListener>
+        <camunda:inputOutput>
+          <camunda:inputParameter name="serviceName">dictionaries</camunda:inputParameter>
+          <camunda:inputParameter name="path">private/dictionaries/LDB0600_REQUEST_USERS/values/temp</camunda:inputParameter>
+          <camunda:inputParameter name="method">POST</camunda:inputParameter>
+        </camunda:inputOutput>
+      </bpmn:extensionElements>
+      <bpmn:incoming>Flow_1gip3kt</bpmn:incoming>
+      <bpmn:outgoing>Flow_0bkuncd</bpmn:outgoing>
+    </bpmn:serviceTask>
+    <bpmn:sequenceFlow id="Flow_002mp3g" sourceRef="clearDraftDictionary" targetRef="updateDraftDictionary" />
+    <bpmn:sequenceFlow id="Flow_0j7e87l" sourceRef="updateDraftDictionary" targetRef="findDictionaryID" />
+    <bpmn:serviceTask id="Activity_13lqxx3" name="Установка статуса &#34;Редактирование&#34;" camunda:delegateExpression="#{restClient}">
+      <bpmn:extensionElements>
+        <camunda:inputOutput>
+          <camunda:inputParameter name="serviceName">documents</camunda:inputParameter>
+          <camunda:inputParameter name="path">/private/documents/{guid}/_status</camunda:inputParameter>
+          <camunda:inputParameter name="pathParams">
+            <camunda:map>
+              <camunda:entry key="guid">${entityGuid}</camunda:entry>
+            </camunda:map>
+          </camunda:inputParameter>
+          <camunda:inputParameter name="method">PUT</camunda:inputParameter>
+          <camunda:inputParameter name="body">
+            <camunda:map>
+              <camunda:entry key="statusCode">DSB0600_1_EDITING</camunda:entry>
+            </camunda:map>
+          </camunda:inputParameter>
+        </camunda:inputOutput>
+      </bpmn:extensionElements>
+      <bpmn:incoming>Flow_0hew14m</bpmn:incoming>
+      <bpmn:outgoing>Flow_00cxqyx</bpmn:outgoing>
+    </bpmn:serviceTask>
+    <bpmn:sequenceFlow id="Flow_00cxqyx" sourceRef="Activity_13lqxx3" targetRef="Activity_1uzw3gd" />
+    <bpmn:serviceTask id="Activity_046ks4h" name="Установка статуса &#34;Просмотр&#34;" camunda:delegateExpression="#{restClient}">
+      <bpmn:extensionElements>
+        <camunda:inputOutput>
+          <camunda:inputParameter name="serviceName">documents</camunda:inputParameter>
+          <camunda:inputParameter name="path">/private/documents/{guid}/_status</camunda:inputParameter>
+          <camunda:inputParameter name="pathParams">
+            <camunda:map>
+              <camunda:entry key="guid">${entityGuid}</camunda:entry>
+            </camunda:map>
+          </camunda:inputParameter>
+          <camunda:inputParameter name="method">PUT</camunda:inputParameter>
+          <camunda:inputParameter name="body">
+            <camunda:map>
+              <camunda:entry key="statusCode">DSB0600_1_VIEWING</camunda:entry>
+            </camunda:map>
+          </camunda:inputParameter>
+        </camunda:inputOutput>
+      </bpmn:extensionElements>
+      <bpmn:incoming>Flow_0fldd6k</bpmn:incoming>
+      <bpmn:outgoing>Flow_0xiso5z</bpmn:outgoing>
+    </bpmn:serviceTask>
+    <bpmn:sequenceFlow id="Flow_0xiso5z" sourceRef="Activity_046ks4h" targetRef="Activity_13yq0ue" />
+    <bpmn:serviceTask id="Activity_1bhy94t" name="Установка статуса &#34;Завершено&#34;" camunda:delegateExpression="#{restClient}">
+      <bpmn:extensionElements>
+        <camunda:inputOutput>
+          <camunda:inputParameter name="serviceName">documents</camunda:inputParameter>
+          <camunda:inputParameter name="path">/private/documents/{guid}/_status</camunda:inputParameter>
+          <camunda:inputParameter name="pathParams">
+            <camunda:map>
+              <camunda:entry key="guid">${entityGuid}</camunda:entry>
+            </camunda:map>
+          </camunda:inputParameter>
+          <camunda:inputParameter name="method">PUT</camunda:inputParameter>
+          <camunda:inputParameter name="body">
+            <camunda:map>
+              <camunda:entry key="statusCode">DSB0600_1_COMPLETED</camunda:entry>
+            </camunda:map>
+          </camunda:inputParameter>
+        </camunda:inputOutput>
+      </bpmn:extensionElements>
+      <bpmn:incoming>Flow_123kapt</bpmn:incoming>
+      <bpmn:outgoing>Flow_1s2rb0i</bpmn:outgoing>
+    </bpmn:serviceTask>
+    <bpmn:sequenceFlow id="Flow_1s2rb0i" sourceRef="Activity_1bhy94t" targetRef="Event_172g14l" />
+    <bpmn:exclusiveGateway id="Gateway_14amk7d" default="Flow_0ox7fdj">
+      <bpmn:incoming>Flow_1p6yppz</bpmn:incoming>
+      <bpmn:outgoing>Flow_0ox7fdj</bpmn:outgoing>
+      <bpmn:outgoing>Flow_005exo1</bpmn:outgoing>
+    </bpmn:exclusiveGateway>
+    <bpmn:sequenceFlow id="Flow_0ox7fdj" sourceRef="Gateway_14amk7d" targetRef="Activity_0bkylmv" />
+    <bpmn:endEvent id="Event_1igspr1">
+      <bpmn:incoming>Flow_0q88p6w</bpmn:incoming>
+    </bpmn:endEvent>
+    <bpmn:sequenceFlow id="Flow_005exo1" sourceRef="Gateway_14amk7d" targetRef="Activity_16ehjkr">
+      <bpmn:conditionExpression xsi:type="bpmn:tFormalExpression">${taskOutcome == 'TAB0600_1_EXIT'}</bpmn:conditionExpression>
+    </bpmn:sequenceFlow>
+    <bpmn:serviceTask id="Activity_16ehjkr" name="Установка статуса &#34;Завершено&#34;" camunda:delegateExpression="#{restClient}">
+      <bpmn:extensionElements>
+        <camunda:inputOutput>
+          <camunda:inputParameter name="serviceName">documents</camunda:inputParameter>
+          <camunda:inputParameter name="path">/private/documents/{guid}/_status</camunda:inputParameter>
+          <camunda:inputParameter name="pathParams">
+            <camunda:map>
+              <camunda:entry key="guid">${entityGuid}</camunda:entry>
+            </camunda:map>
+          </camunda:inputParameter>
+          <camunda:inputParameter name="method">PUT</camunda:inputParameter>
+          <camunda:inputParameter name="body">
+            <camunda:map>
+              <camunda:entry key="statusCode">DSB0600_1_COMPLETED</camunda:entry>
+            </camunda:map>
+          </camunda:inputParameter>
+        </camunda:inputOutput>
+      </bpmn:extensionElements>
+      <bpmn:incoming>Flow_005exo1</bpmn:incoming>
+      <bpmn:outgoing>Flow_0q88p6w</bpmn:outgoing>
+    </bpmn:serviceTask>
+    <bpmn:sequenceFlow id="Flow_0q88p6w" sourceRef="Activity_16ehjkr" targetRef="Event_1igspr1" />
+    <bpmn:boundaryEvent id="Event_1e49a8y" attachedToRef="prepareApproverSetting">
+      <bpmn:outgoing>Flow_0nqpoph</bpmn:outgoing>
+      <bpmn:errorEventDefinition id="ErrorEventDefinition_0mrmlow" camunda:errorCodeVariable="ERROR" camunda:errorMessageVariable="errorMessage" />
+    </bpmn:boundaryEvent>
+    <bpmn:intermediateCatchEvent id="catchEventError" name="Обработка ошибки">
+      <bpmn:outgoing>Flow_0um0uru</bpmn:outgoing>
+      <bpmn:linkEventDefinition id="LinkEventDefinition_07dyk7w" name="linkError" />
+    </bpmn:intermediateCatchEvent>
+    <bpmn:serviceTask id="Activity_006k6ir" name="Обновление документа (errorMap)" camunda:delegateExpression="#{restClient}">
+      <bpmn:extensionElements>
+        <camunda:inputOutput>
+          <camunda:inputParameter name="serviceName">documents</camunda:inputParameter>
+          <camunda:inputParameter name="path">private/documents/{guid}/_attributes</camunda:inputParameter>
+          <camunda:inputParameter name="method">PUT</camunda:inputParameter>
+          <camunda:inputParameter name="pathParams">
+            <camunda:map>
+              <camunda:entry key="guid">${entityGuid}</camunda:entry>
+            </camunda:map>
+          </camunda:inputParameter>
+          <camunda:inputParameter name="body">${errorMap}</camunda:inputParameter>
+        </camunda:inputOutput>
+      </bpmn:extensionElements>
+      <bpmn:incoming>Flow_1bewkk0</bpmn:incoming>
+      <bpmn:outgoing>Flow_1i8titc</bpmn:outgoing>
+    </bpmn:serviceTask>
+    <bpmn:sequenceFlow id="Flow_0um0uru" sourceRef="catchEventError" targetRef="createErrorMap" />
+    <bpmn:serviceTask id="Activity_1ejr2au" name="Исключение некорректности данных" camunda:delegateExpression="#{raiseException}">
+      <bpmn:extensionElements>
+        <camunda:inputOutput>
+          <camunda:inputParameter name="httpStatusCode">400</camunda:inputParameter>
+          <camunda:inputParameter name="errorMessage">Обнаружены ошибки, см. поле 'Ошибка' в форме документа</camunda:inputParameter>
+        </camunda:inputOutput>
+      </bpmn:extensionElements>
+      <bpmn:incoming>Flow_1i8titc</bpmn:incoming>
+      <bpmn:outgoing>Flow_1m0d2q5</bpmn:outgoing>
+    </bpmn:serviceTask>
+    <bpmn:sequenceFlow id="Flow_1i8titc" sourceRef="Activity_006k6ir" targetRef="Activity_1ejr2au" />
+    <bpmn:endEvent id="Event_12hzp10">
+      <bpmn:incoming>Flow_1m0d2q5</bpmn:incoming>
+    </bpmn:endEvent>
+    <bpmn:sequenceFlow id="Flow_1m0d2q5" sourceRef="Activity_1ejr2au" targetRef="Event_12hzp10" />
+    <bpmn:sequenceFlow id="Flow_1bewkk0" sourceRef="createErrorMap" targetRef="Activity_006k6ir" />
+    <bpmn:scriptTask id="createErrorMap" name="Create ErrorMap" scriptFormat="groovy">
+      <bpmn:incoming>Flow_0um0uru</bpmn:incoming>
+      <bpmn:outgoing>Flow_1bewkk0</bpmn:outgoing>
+      <bpmn:script>/* 0600.1 Script Task "Create ErrorMap" (createErrorMap) */
+// JsonBuilder - для преобразования объектов Groovy (Map, List, POGO) в строку формата JSON
+import groovy.json.JsonBuilder
+def log = org.slf4j.LoggerFactory.getLogger("${processCode}_createErrorMap")
+def processInstanceId = execution.getProcessInstanceId()
+
+def errorMsg = execution.getVariable("errorMessage")
+//log.info("PROCESS [{}] Received errorMsg: {}", processInstanceId, errorMsg)
+
+// Используем конструктор JsonBuilder для создания валидной JSON-строки
+def errorMapJson = new JsonBuilder(["ERROR_MESSAGE": errorMsg]).toString()
+
+//Сохраняем в переменную процесса
+execution.setVariable("errorMap", errorMapJson)
+//log.info("PROCESS [{}] Created errorMap: {}", processInstanceId, errorMapJson)
+</bpmn:script>
+    </bpmn:scriptTask>
+    <bpmn:sequenceFlow id="Flow_0nqpoph" sourceRef="Event_1e49a8y" targetRef="Event_1n6cdv3" />
+    <bpmn:intermediateThrowEvent id="Event_1n6cdv3" name="на Обработку ошибки">
+      <bpmn:incoming>Flow_0nqpoph</bpmn:incoming>
+      <bpmn:linkEventDefinition id="LinkEventDefinition_1rjd09y" name="linkError" />
+    </bpmn:intermediateThrowEvent>
+    <bpmn:boundaryEvent id="Event_1u13bmy" attachedToRef="dataControl">
+      <bpmn:outgoing>Flow_0jigobp</bpmn:outgoing>
+      <bpmn:errorEventDefinition id="ErrorEventDefinition_0io2bja" camunda:errorCodeVariable="ERROR" camunda:errorMessageVariable="errorMessage" />
+    </bpmn:boundaryEvent>
+    <bpmn:sequenceFlow id="Flow_0jigobp" sourceRef="Event_1u13bmy" targetRef="Event_0ky4bzz" />
+    <bpmn:intermediateThrowEvent id="Event_0ky4bzz" name="на Обработку ошибки">
+      <bpmn:incoming>Flow_0jigobp</bpmn:incoming>
+      <bpmn:linkEventDefinition id="LinkEventDefinition_03vpimg" name="linkError" />
+    </bpmn:intermediateThrowEvent>
+    <bpmn:sequenceFlow id="Flow_02zt088" sourceRef="dataControl" targetRef="prepareDictionary" />
+    <bpmn:sequenceFlow id="Flow_0ikiq0i" sourceRef="Event_17jaet4" targetRef="getDocAttributes" />
+    <bpmn:serviceTask id="findDictionaryID" name="Find Dictionary ID" camunda:delegateExpression="#{restClient}">
+      <bpmn:documentation>Поиск значение ID для Справочника LDB0600_REQUEST_USERS</bpmn:documentation>
+      <bpmn:extensionElements>
+        <camunda:inputOutput>
+          <camunda:inputParameter name="serviceName">dictionaries</camunda:inputParameter>
+          <camunda:inputParameter name="path">private/dictionaries?query=code==LDB0600_REQUEST_USERS</camunda:inputParameter>
+          <camunda:inputParameter name="method">GET</camunda:inputParameter>
+          <camunda:inputParameter name="resultVarName">dictionaryInfo</camunda:inputParameter>
+        </camunda:inputOutput>
+        <camunda:executionListener event="start">
+          <camunda:script scriptFormat="groovy">def log = org.slf4j.LoggerFactory.getLogger("findDictionaryID")
+def processInstanceId = execution.getProcessInstanceId()
+log.info("PROCESS [{}] ---Start---", processInstanceId)</camunda:script>
+        </camunda:executionListener>
+        <camunda:executionListener event="end">
+          <camunda:script scriptFormat="groovy">def log = org.slf4j.LoggerFactory.getLogger("findDictionaryID")
+def processInstanceId = execution.getProcessInstanceId()
+
+// 1. Проверяем наличие и заполненность переменной
+if (execution.hasVariable("dictionaryInfo") &amp;&amp; execution.getVariable("dictionaryInfo") != null) {
+    def info = execution.getVariable("dictionaryInfo")
+    def dictionaryList = null
+
+    try {
+        // 2. Обработка типа JacksonJsonNode (Camunda Spin) - именно он завалил прошлый запуск
+        if (info instanceof org.camunda.spin.json.SpinJsonNode || info.getClass().getName().contains("JsonNode")) {
+            // Проверяем, есть ли свойство "data" и является ли оно массивом
+            if (info.hasProp("data")) {
+                // Извлекаем массив, превращаем первый элемент в Map и берем id
+                def dataArray = info.prop("data")
+                if (dataArray.isArray() &amp;&amp; dataArray.elements().size() &gt; 0) {
+                    def firstElement = dataArray.elements().get(0)
+                    // Извлекаем id в зависимости от того, как Spin отдает свойства
+                    def dictId = firstElement.hasProp("id") ? firstElement.prop("id").numberValue() : null
+                    
+                    if (dictId != null) {
+                        execution.setVariable("dictionaryId", dictId)
+                        log.info("PROCESS [{}] [SpinNode] Successfully extracted dictionaryId: {}", processInstanceId, dictId)
+                    }
+                }
+            }
+        } 
+        // 3. Резервный вариант: если пришла обычная Map (на случай изменений в платформе)
+        else if (info instanceof java.util.Map) {
+            dictionaryList = info.data
+            if (dictionaryList &amp;&amp; !dictionaryList.isEmpty()) {
+                def dictId = dictionaryList[0].id
+                execution.setVariable("dictionaryId", dictId)
+                log.info("PROCESS [{}] [Map] Successfully extracted dictionaryId: {}", processInstanceId, dictId)
+            }
+        } 
+        // 4. Резервный вариант: если пришла сырая строка String
+        else if (info instanceof java.lang.String) {
+            def jsonSlurper = new groovy.json.JsonSlurper()
+            def jsonObject = jsonSlurper.parseText(info)
+            dictionaryList = jsonObject.data
+            if (dictionaryList &amp;&amp; !dictionaryList.isEmpty()) {
+                def dictId = dictionaryList[0].id
+                execution.setVariable("dictionaryId", dictId)
+                log.info("PROCESS [{}] [String] Successfully extracted dictionaryId: {}", processInstanceId, dictId)
+            }
+        }
+
+        // Если после всех проверок id так и не записался
+        if (execution.getVariable("dictionaryId") == null) {
+            log.warn("PROCESS [{}] Dictionary ID could not be found in the response structure", processInstanceId)
+            execution.setVariable("dictionaryId", null)
+        }
+
+    } catch (Exception e) {
+        log.error("PROCESS [{}] Error while parsing JSON structure: {}", processInstanceId, e.getMessage(), e)
+        execution.setVariable("dictionaryId", null)
+    }
+
+} else {
+    log.error("PROCESS [{}] variable 'dictionaryInfo' is missing or null!", processInstanceId)
+    execution.setVariable("dictionaryId", null)
+}
+
+log.info("PROCESS [{}] ---End---", processInstanceId)
+</camunda:script>
+        </camunda:executionListener>
+      </bpmn:extensionElements>
+      <bpmn:incoming>Flow_0j7e87l</bpmn:incoming>
+      <bpmn:outgoing>Flow_0t9qsyn</bpmn:outgoing>
+    </bpmn:serviceTask>
+    <bpmn:sequenceFlow id="Flow_0t9qsyn" sourceRef="findDictionaryID" targetRef="publishDictionary" />
+    <bpmn:textAnnotation id="TextAnnotation_02xrq0e">
+      <bpmn:text>Явно указан ИДЕНТИФИКАТОР Справочника: dictionaryId</bpmn:text>
+    </bpmn:textAnnotation>
+    <bpmn:association id="Association_141xcd0" associationDirection="None" sourceRef="publishDictionary" targetRef="TextAnnotation_02xrq0e" />
+  </bpmn:process>
+  <bpmndi:BPMNDiagram id="BPMNDiagram_1">
+    <bpmndi:BPMNPlane id="BPMNPlane_1" bpmnElement="PIB0600_1_APPROVER_SETTING">
+      <bpmndi:BPMNShape id="Event_17jaet4_di" bpmnElement="Event_17jaet4">
+        <dc:Bounds x="152" y="252" width="36" height="36" />
+      </bpmndi:BPMNShape>
+      <bpmndi:BPMNShape id="Activity_13t8epi_di" bpmnElement="Activity_1uzw3gd">
+        <dc:Bounds x="1300" y="230" width="100" height="80" />
+      </bpmndi:BPMNShape>
+      <bpmndi:BPMNShape id="Activity_1192ahj_di" bpmnElement="dataControl">
+        <dc:Bounds x="1690" y="230" width="100" height="80" />
+        <bpmndi:BPMNLabel />
+      </bpmndi:BPMNShape>
+      <bpmndi:BPMNShape id="BPMNShape_0i6ju0d" bpmnElement="Event_172g14l">
+        <dc:Bounds x="3152" y="252" width="36" height="36" />
+      </bpmndi:BPMNShape>
+      <bpmndi:BPMNShape id="BPMNShape_0vdc2cs" bpmnElement="Activity_0bkylmv">
+        <dc:Bounds x="1530" y="230" width="100" height="80" />
+        <bpmndi:BPMNLabel />
+      </bpmndi:BPMNShape>
+      <bpmndi:BPMNShape id="BPMNShape_1hhapxz" bpmnElement="Activity_13yq0ue">
+        <dc:Bounds x="2870" y="230" width="100" height="80" />
+        <bpmndi:BPMNLabel />
+      </bpmndi:BPMNShape>
+      <bpmndi:BPMNShape id="BPMNShape_0yx42uy" bpmnElement="getDocAttributes">
+        <dc:Bounds x="230" y="230" width="100" height="80" />
+        <bpmndi:BPMNLabel />
+      </bpmndi:BPMNShape>
+      <bpmndi:BPMNShape id="Activity_191bdcw_di" bpmnElement="getRequestUsersService">
+        <dc:Bounds x="380" y="230" width="100" height="80" />
+        <bpmndi:BPMNLabel />
+      </bpmndi:BPMNShape>
+      <bpmndi:BPMNShape id="Activity_0b22q1d_di" bpmnElement="requestUsersControl">
+        <dc:Bounds x="530" y="230" width="100" height="80" />
+        <bpmndi:BPMNLabel />
+      </bpmndi:BPMNShape>
+      <bpmndi:BPMNShape id="Activity_0tlg8yj_di" bpmnElement="restClient_Check">
+        <dc:Bounds x="680" y="230" width="100" height="80" />
+        <bpmndi:BPMNLabel />
+      </bpmndi:BPMNShape>
+      <bpmndi:BPMNShape id="Activity_12z9xty_di" bpmnElement="prepareDictionary">
+        <dc:Bounds x="1840" y="230" width="100" height="80" />
+        <bpmndi:BPMNLabel />
+      </bpmndi:BPMNShape>
+      <bpmndi:BPMNShape id="Activity_1jfxy3s_di" bpmnElement="updateDraftDictionary">
+        <dc:Bounds x="2260" y="230" width="100" height="80" />
+        <bpmndi:BPMNLabel />
+      </bpmndi:BPMNShape>
+      <bpmndi:BPMNShape id="Activity_01mf0cx_di" bpmnElement="prepareApproverSetting">
+        <dc:Bounds x="840" y="230" width="100" height="80" />
+        <bpmndi:BPMNLabel />
+      </bpmndi:BPMNShape>
+      <bpmndi:BPMNShape id="BPMNShape_1gxsudo" bpmnElement="Activity_0ppgye2">
+        <dc:Bounds x="990" y="230" width="100" height="80" />
+        <bpmndi:BPMNLabel />
+      </bpmndi:BPMNShape>
+      <bpmndi:BPMNShape id="BPMNShape_148pdoy" bpmnElement="publishDictionary" bioc:stroke="#831311" bioc:fill="#ffcdd2" color:background-color="#ffcdd2" color:border-color="#831311">
+        <dc:Bounds x="2560" y="230" width="100" height="80" />
+        <bpmndi:BPMNLabel />
+      </bpmndi:BPMNShape>
+      <bpmndi:BPMNShape id="BPMNShape_1fana78" bpmnElement="clearDraftDictionary">
+        <dc:Bounds x="2120" y="230" width="100" height="80" />
+        <bpmndi:BPMNLabel />
+      </bpmndi:BPMNShape>
+      <bpmndi:BPMNShape id="Activity_0xlhya9_di" bpmnElement="createDraftFromPublic">
+        <dc:Bounds x="1980" y="230" width="100" height="80" />
+        <bpmndi:BPMNLabel />
+      </bpmndi:BPMNShape>
+      <bpmndi:BPMNShape id="BPMNShape_1o4r8fa" bpmnElement="Activity_13lqxx3">
+        <dc:Bounds x="1140" y="230" width="100" height="80" />
+        <bpmndi:BPMNLabel />
+      </bpmndi:BPMNShape>
+      <bpmndi:BPMNShape id="BPMNShape_1cfl0x4" bpmnElement="Activity_046ks4h">
+        <dc:Bounds x="2720" y="230" width="100" height="80" />
+        <bpmndi:BPMNLabel />
+      </bpmndi:BPMNShape>
+      <bpmndi:BPMNShape id="BPMNShape_1i7omgv" bpmnElement="Activity_1bhy94t">
+        <dc:Bounds x="3020" y="230" width="100" height="80" />
+        <bpmndi:BPMNLabel />
+      </bpmndi:BPMNShape>
+      <bpmndi:BPMNShape id="Gateway_14amk7d_di" bpmnElement="Gateway_14amk7d" isMarkerVisible="true">
+        <dc:Bounds x="1435" y="245" width="50" height="50" />
+      </bpmndi:BPMNShape>
+      <bpmndi:BPMNShape id="Event_1igspr1_di" bpmnElement="Event_1igspr1">
+        <dc:Bounds x="1442" y="432" width="36" height="36" />
+      </bpmndi:BPMNShape>
+      <bpmndi:BPMNShape id="BPMNShape_05arot3" bpmnElement="Activity_16ehjkr">
+        <dc:Bounds x="1410" y="320" width="100" height="80" />
+        <bpmndi:BPMNLabel />
+      </bpmndi:BPMNShape>
+      <bpmndi:BPMNShape id="Event_1ciaew0_di" bpmnElement="catchEventError">
+        <dc:Bounds x="162" y="492" width="36" height="36" />
+        <bpmndi:BPMNLabel>
+          <dc:Bounds x="154" y="535" width="56" height="27" />
+        </bpmndi:BPMNLabel>
+      </bpmndi:BPMNShape>
+      <bpmndi:BPMNShape id="BPMNShape_1042tt0" bpmnElement="Activity_006k6ir">
+        <dc:Bounds x="360" y="470" width="100" height="80" />
+        <bpmndi:BPMNLabel />
+      </bpmndi:BPMNShape>
+      <bpmndi:BPMNShape id="BPMNShape_0993g4f" bpmnElement="Activity_1ejr2au">
+        <dc:Bounds x="500" y="470" width="100" height="80" />
+        <bpmndi:BPMNLabel />
+      </bpmndi:BPMNShape>
+      <bpmndi:BPMNShape id="Event_12hzp10_di" bpmnElement="Event_12hzp10">
+        <dc:Bounds x="632" y="492" width="36" height="36" />
+      </bpmndi:BPMNShape>
+      <bpmndi:BPMNShape id="Activity_17dpuiv_di" bpmnElement="createErrorMap">
+        <dc:Bounds x="230" y="470" width="100" height="80" />
+        <bpmndi:BPMNLabel />
+      </bpmndi:BPMNShape>
+      <bpmndi:BPMNShape id="Event_0yhfhxl_di" bpmnElement="Event_1n6cdv3">
+        <dc:Bounds x="892" y="352" width="36" height="36" />
+        <bpmndi:BPMNLabel>
+          <dc:Bounds x="877" y="395" width="71" height="27" />
+        </bpmndi:BPMNLabel>
+      </bpmndi:BPMNShape>
+      <bpmndi:BPMNShape id="Event_0vgb4gh_di" bpmnElement="Event_0ky4bzz">
+        <dc:Bounds x="1742" y="362" width="36" height="36" />
+        <bpmndi:BPMNLabel>
+          <dc:Bounds x="1725" y="405" width="71" height="27" />
+        </bpmndi:BPMNLabel>
+      </bpmndi:BPMNShape>
+      <bpmndi:BPMNShape id="BPMNShape_1rmkwy9" bpmnElement="findDictionaryID" bioc:stroke="#6b3c00" bioc:fill="#ffe0b2" color:background-color="#ffe0b2" color:border-color="#6b3c00">
+        <dc:Bounds x="2410" y="230" width="100" height="80" />
+        <bpmndi:BPMNLabel />
+      </bpmndi:BPMNShape>
+      <bpmndi:BPMNShape id="TextAnnotation_02xrq0e_di" bpmnElement="TextAnnotation_02xrq0e">
+        <dc:Bounds x="2590" y="140" width="230" height="39" />
+        <bpmndi:BPMNLabel />
+      </bpmndi:BPMNShape>
+      <bpmndi:BPMNShape id="Event_1wi0pov_di" bpmnElement="Event_1u13bmy">
+        <dc:Bounds x="1742" y="292" width="36" height="36" />
+      </bpmndi:BPMNShape>
+      <bpmndi:BPMNShape id="Event_0d4gn72_di" bpmnElement="Event_1e49a8y">
+        <dc:Bounds x="892" y="292" width="36" height="36" />
+      </bpmndi:BPMNShape>
+      <bpmndi:BPMNEdge id="Flow_1p6yppz_di" bpmnElement="Flow_1p6yppz">
+        <di:waypoint x="1400" y="270" />
+        <di:waypoint x="1435" y="270" />
+      </bpmndi:BPMNEdge>
+      <bpmndi:BPMNEdge id="Flow_0dppu4z_di" bpmnElement="flowToRevise">
+        <di:waypoint x="2920" y="230" />
+        <di:waypoint x="2920" y="100" />
+        <di:waypoint x="280" y="100" />
+        <di:waypoint x="280" y="230" />
+        <bpmndi:BPMNLabel>
+          <dc:Bounds x="1578" y="82" width="69" height="14" />
+        </bpmndi:BPMNLabel>
+      </bpmndi:BPMNEdge>
+      <bpmndi:BPMNEdge id="BPMNEdge_188uffp" bpmnElement="Flow_123kapt">
+        <di:waypoint x="2970" y="270" />
+        <di:waypoint x="3020" y="270" />
+      </bpmndi:BPMNEdge>
+      <bpmndi:BPMNEdge id="Flow_00cztzx_di" bpmnElement="Flow_00cztzx">
+        <di:waypoint x="630" y="270" />
+        <di:waypoint x="680" y="270" />
+      </bpmndi:BPMNEdge>
+      <bpmndi:BPMNEdge id="Flow_1x5zvwa_di" bpmnElement="Flow_1x5zvwa">
+        <di:waypoint x="780" y="270" />
+        <di:waypoint x="840" y="270" />
+      </bpmndi:BPMNEdge>
+      <bpmndi:BPMNEdge id="Flow_1jbyr7a_di" bpmnElement="Flow_1jbyr7a">
+        <di:waypoint x="330" y="270" />
+        <di:waypoint x="380" y="270" />
+      </bpmndi:BPMNEdge>
+      <bpmndi:BPMNEdge id="Flow_1gip3kt_di" bpmnElement="Flow_1gip3kt">
+        <di:waypoint x="1940" y="270" />
+        <di:waypoint x="1980" y="270" />
+      </bpmndi:BPMNEdge>
+      <bpmndi:BPMNEdge id="Flow_0qtlkk0_di" bpmnElement="Flow_0qtlkk0">
+        <di:waypoint x="480" y="270" />
+        <di:waypoint x="530" y="270" />
+      </bpmndi:BPMNEdge>
+      <bpmndi:BPMNEdge id="Flow_1q89t6t_di" bpmnElement="Flow_1q89t6t">
+        <di:waypoint x="940" y="270" />
+        <di:waypoint x="990" y="270" />
+      </bpmndi:BPMNEdge>
+      <bpmndi:BPMNEdge id="Flow_0c8mz5w_di" bpmnElement="Flow_0c8mz5w">
+        <di:waypoint x="1630" y="270" />
+        <di:waypoint x="1690" y="270" />
+      </bpmndi:BPMNEdge>
+      <bpmndi:BPMNEdge id="Flow_0hew14m_di" bpmnElement="Flow_0hew14m">
+        <di:waypoint x="1090" y="270" />
+        <di:waypoint x="1140" y="270" />
+      </bpmndi:BPMNEdge>
+      <bpmndi:BPMNEdge id="Flow_0fldd6k_di" bpmnElement="Flow_0fldd6k">
+        <di:waypoint x="2660" y="270" />
+        <di:waypoint x="2720" y="270" />
+      </bpmndi:BPMNEdge>
+      <bpmndi:BPMNEdge id="Flow_0bkuncd_di" bpmnElement="Flow_0bkuncd">
+        <di:waypoint x="2080" y="270" />
+        <di:waypoint x="2120" y="270" />
+      </bpmndi:BPMNEdge>
+      <bpmndi:BPMNEdge id="Flow_002mp3g_di" bpmnElement="Flow_002mp3g">
+        <di:waypoint x="2220" y="270" />
+        <di:waypoint x="2260" y="270" />
+      </bpmndi:BPMNEdge>
+      <bpmndi:BPMNEdge id="Flow_0j7e87l_di" bpmnElement="Flow_0j7e87l">
+        <di:waypoint x="2360" y="270" />
+        <di:waypoint x="2410" y="270" />
+      </bpmndi:BPMNEdge>
+      <bpmndi:BPMNEdge id="Flow_00cxqyx_di" bpmnElement="Flow_00cxqyx">
+        <di:waypoint x="1240" y="270" />
+        <di:waypoint x="1300" y="270" />
+      </bpmndi:BPMNEdge>
+      <bpmndi:BPMNEdge id="Flow_0xiso5z_di" bpmnElement="Flow_0xiso5z">
+        <di:waypoint x="2820" y="270" />
+        <di:waypoint x="2870" y="270" />
+      </bpmndi:BPMNEdge>
+      <bpmndi:BPMNEdge id="Flow_1s2rb0i_di" bpmnElement="Flow_1s2rb0i">
+        <di:waypoint x="3120" y="270" />
+        <di:waypoint x="3152" y="270" />
+      </bpmndi:BPMNEdge>
+      <bpmndi:BPMNEdge id="Flow_0ox7fdj_di" bpmnElement="Flow_0ox7fdj">
+        <di:waypoint x="1485" y="270" />
+        <di:waypoint x="1530" y="270" />
+      </bpmndi:BPMNEdge>
+      <bpmndi:BPMNEdge id="Flow_005exo1_di" bpmnElement="Flow_005exo1">
+        <di:waypoint x="1460" y="295" />
+        <di:waypoint x="1460" y="320" />
+      </bpmndi:BPMNEdge>
+      <bpmndi:BPMNEdge id="Flow_0q88p6w_di" bpmnElement="Flow_0q88p6w">
+        <di:waypoint x="1460" y="400" />
+        <di:waypoint x="1460" y="432" />
+      </bpmndi:BPMNEdge>
+      <bpmndi:BPMNEdge id="Flow_0um0uru_di" bpmnElement="Flow_0um0uru">
+        <di:waypoint x="198" y="510" />
+        <di:waypoint x="230" y="510" />
+      </bpmndi:BPMNEdge>
+      <bpmndi:BPMNEdge id="Flow_1i8titc_di" bpmnElement="Flow_1i8titc">
+        <di:waypoint x="460" y="510" />
+        <di:waypoint x="500" y="510" />
+      </bpmndi:BPMNEdge>
+      <bpmndi:BPMNEdge id="Flow_1m0d2q5_di" bpmnElement="Flow_1m0d2q5">
+        <di:waypoint x="600" y="510" />
+        <di:waypoint x="632" y="510" />
+      </bpmndi:BPMNEdge>
+      <bpmndi:BPMNEdge id="Flow_1bewkk0_di" bpmnElement="Flow_1bewkk0">
+        <di:waypoint x="330" y="510" />
+        <di:waypoint x="360" y="510" />
+      </bpmndi:BPMNEdge>
+      <bpmndi:BPMNEdge id="Flow_0nqpoph_di" bpmnElement="Flow_0nqpoph">
+        <di:waypoint x="910" y="328" />
+        <di:waypoint x="910" y="352" />
+      </bpmndi:BPMNEdge>
+      <bpmndi:BPMNEdge id="Flow_0jigobp_di" bpmnElement="Flow_0jigobp">
+        <di:waypoint x="1760" y="328" />
+        <di:waypoint x="1760" y="362" />
+      </bpmndi:BPMNEdge>
+      <bpmndi:BPMNEdge id="Flow_02zt088_di" bpmnElement="Flow_02zt088">
+        <di:waypoint x="1790" y="270" />
+        <di:waypoint x="1840" y="270" />
+      </bpmndi:BPMNEdge>
+      <bpmndi:BPMNEdge id="Flow_0ikiq0i_di" bpmnElement="Flow_0ikiq0i">
+        <di:waypoint x="188" y="270" />
+        <di:waypoint x="230" y="270" />
+      </bpmndi:BPMNEdge>
+      <bpmndi:BPMNEdge id="Association_141xcd0_di" bpmnElement="Association_141xcd0">
+        <di:waypoint x="2620" y="230" />
+        <di:waypoint x="2633" y="179" />
+      </bpmndi:BPMNEdge>
+      <bpmndi:BPMNEdge id="Flow_0t9qsyn_di" bpmnElement="Flow_0t9qsyn">
+        <di:waypoint x="2510" y="270" />
+        <di:waypoint x="2560" y="270" />
+      </bpmndi:BPMNEdge>
+    </bpmndi:BPMNPlane>
+  </bpmndi:BPMNDiagram>
+</bpmn:definitions>
