@@ -144,6 +144,7 @@ execution.setVariable('messageProperties', [commentText: 'Сюда добави�
           </camunda:taskListener>
           <camunda:taskListener event="complete">
             <camunda:script scriptFormat="groovy">/* Проверка является ли taskOutcome Глобальной или Локальной  */
+/*** Закомментировал эту проверку ****
 import org.slf4j.LoggerFactory
 
 def log = LoggerFactory.getLogger("TEST_VARIABLE_CHECK")
@@ -173,7 +174,8 @@ log.info("4. Итоговое видимое значение движком: ${
 if (currentVal == "TAB0600_REVISE" || currentVal == "TAB0600_DECLINE") {
     log.info("Обнаружено негативное решение [${currentVal}]. Копируем переменную в корень процесса.")
     task.getProcessInstance().setVariable("taskOutcome", currentVal)
-}</camunda:script>
+}
+*** END Закомментировал эту проверку ****/</camunda:script>
           </camunda:taskListener>
         </bpmn:extensionElements>
         <bpmn:incoming>Flow_ToParallel</bpmn:incoming>
@@ -904,7 +906,14 @@ filteredSetupStages.each { setupRow -&gt;
   
   //Контроль наличия assignmentType равного CANDIDATE_GROUPS или GROUP
   if (assignmentType == 'CANDIDATE_GROUPS' || assignmentType == 'GROUP') {
-    errorMessage = "В настройках этапа '${currentStageCode}' используется нереализованный Тип назначения: '${assignmentType}'"
+    errorMessage = "В настройках этапа '${currentStageCode}' используется нереализованный Тип назначения (assignmentType): '${assignmentType}'"
+    log.error("PROCESS [{}]: {}", processInstanceId, errorMessage)
+    throw new BpmnError("ERROR", errorMessage)
+  }
+  
+  //Контроль наличия userType равного NFS
+  if (userType == 'NFS') {
+    errorMessage = "В настройках этапа '${currentStageCode}' используется нереализованный Способ получение Исполнителей(userType): '${userType}'"
     log.error("PROCESS [{}]: {}", processInstanceId, errorMessage)
     throw new BpmnError("ERROR", errorMessage)
   }
