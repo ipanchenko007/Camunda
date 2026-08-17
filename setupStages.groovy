@@ -1,6 +1,8 @@
 /* 0600 Script Task "Настройка этапов" (setupStages) */
 import groovy.json.JsonOutput 
 import org.camunda.bpm.engine.delegate.BpmnError
+//Использование import groovy.json.JsonBuilder позволяет удобно формировать новые JSON-структуры внутри скрипта Camunda 7
+import groovy.json.JsonBuilder
 
 def log = org.slf4j.LoggerFactory.getLogger("${processCode}_setupStages")
 def processInstanceId = execution.getProcessInstanceId()
@@ -131,6 +133,9 @@ def stageNameRows = extractDataRows(stageDataMap)
 log.info("PROCESS [{}]: Данные успешно извлечены. Строк: setupRows={}, userRows={}, stageNameRows={}", 
     processInstanceId, setupRows.size(), userRows.size(), stageNameRows.size())
     
+//Контроль setupRows
+//log.info("PROCESS [{}]: Контроль setupRows: {}", processInstanceId, setupRows)
+
 // Шаг 1: Фильтрация этапов по текущему Типу документа и атрибутам Документа
 def filteredSetupStages = setupRows.findAll { row ->
   def currentStageCode = row.stage_code?.toString() ?: ""
@@ -253,6 +258,20 @@ filteredSetupStages.each { setupRow ->
   def workingDays = (setupRow.working_days as Integer) ?: 2
   def btnRevise = setupRow.button_revise?.toString() ?: "N"
   def btnDecline = setupRow.button_decline?.toString() ?: "N"
+  
+  //Контроль наличия assignmentType равного CANDIDATE_GROUPS или GROUP
+  if (assignmentType == 'CANDIDATE_GROUPS' || assignmentType == 'GROUP') {
+    errorMessage = "В настройках этапа '${currentStageCode}' используется нереализованный Тип назначения (assignmentType): '${assignmentType}'"
+    log.error("PROCESS [{}]: {}", processInstanceId, errorMessage)
+    throw new BpmnError("ERROR", errorMessage)
+  }
+  
+  //Контроль наличия userType равного NFS
+  if (userType == 'NFS') {
+    errorMessage = "В настройках этапа '${currentStageCode}' используется нереализованный Способ получение Исполнителей(userType): '${userType}'"
+    log.error("PROCESS [{}]: {}", processInstanceId, errorMessage)
+    throw new BpmnError("ERROR", errorMessage)
+  }
   
   //Определение доступны Действий
   def allowedActions = ["TAB0600_ACCEPT"]
@@ -411,6 +430,18 @@ filteredSetupStages.each { setupRow ->
   setupStages[currentStageCode] = stepConfig
 }
 
+// ПОСТОБРАБОТКА: Сквозной динамический перерасчет номеров строк (с одинаковым именем этапа)
+def nextStageNum = 1
+def stageNameToNumMap = [:]
+
+initialList.each { row ->
+  def stageName = row["ABB0600_INITIAL_STAGE_NAME"] ?: ""
+  if (!stageNameToNumMap.containsKey(stageName)) {
+    stageNameToNumMap[stageName] = (nextStageNum++).toString()
+  }
+  row["ABB0600_STAGE_NUM"] = stageNameToNumMap[stageName]
+}
+
 // Превращаем значения LinkedHashMap в плоский список List для Camunda Multi-Instance
 def stepsCollection = new ArrayList(setupStages.values())
 
@@ -419,6 +450,33 @@ if (stepsCollection.isEmpty()) {
   errorMessage = "Для типа документа ${docType} не настроено ни одного обязательного этапа согласования в LDB0600_SETUP_STAGES.".toString()
   log.error("PROCESS [{}]: {}", processInstanceId, errorMessage)
   throw new BpmnError("ERROR", errorMessage)
+}
+
+//Если в форме документа сохранена информация об ошибке, а теперь ошибки нет, то чистим значение ERROR_MESSAGE и ERROR_FLAG_YN (если есть)
+def oldErrorValue = metaMap?.attributes?.ERROR_MESSAGE ?: ""
+if (oldErrorValue != "" && errorMessage == "") {
+  //Вариант 1. С использованием groovy.json.JsonBuilder
+  errorJsonMap = new JsonBuilder(["ERROR_MESSAGE": "", "ERROR_FLAG_YN": "N"]).toString() //Ошибка при запуске через через Cockpit
+  //Вариант 2. Создаем JSON-строку через встроенный движок Spin
+  //errorJsonMap = S("{}").prop("ERROR_MESSAGE", "").prop("ERROR_FLAG_YN", "N").toString()
+  execution.setVariableLocal("body", errorJsonMap)
+  
+  //Общие Local переменные для вызова метода обновления атрибутов Документа
+  execution.setVariableLocal("serviceName", "documents")
+  execution.setVariableLocal("method", "PUT")
+  
+  fullPath = "private/documents/${entityGuid}/_attributes"
+  execution.setVariableLocal("path", fullPath)
+  try {
+    //log.info("PROCESS [{}] Clear ERROR_MESSAGE fullPath: {} body: {}", processInstanceId, fullPath, errorJsonMap)
+    restClient.execute(execution)
+  
+  } catch (Exception e) {
+    log.info("PROCESS [{}] Error call fullPath: {} body: {}", processInstanceId, fullPath, errorJsonMap)
+    errorMessage = "Не удалось очистить атрибут ERROR_MESSAGE"
+    //execution.setVariable("errorMessage", errorMessage) //Сохраним значение errorMessage - Лишнее, т.к. значение сохранится в boundaryEvent
+    throw new BpmnError("ERROR", errorMessage)
+  }  
 }
 
 // Шаг 5: Запись результатов в переменные процесса Camunda как чистые Java-объекты
