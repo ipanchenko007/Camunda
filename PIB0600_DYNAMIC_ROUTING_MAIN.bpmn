@@ -72,7 +72,7 @@ execution.setVariable('messageProperties', [commentText: 'Сюда добави�
       <bpmn:outgoing>Flow_BackFromGlobalRevision</bpmn:outgoing>
     </bpmn:userTask>
     <bpmn:endEvent id="EndEvent_1" name="EndEvent_1">
-      <bpmn:incoming>Flow_15tfl2i</bpmn:incoming>
+      <bpmn:incoming>Flow_0pcltnz</bpmn:incoming>
     </bpmn:endEvent>
     <bpmn:sequenceFlow id="Flow_ToAnchor" sourceRef="StartEvent_1" targetRef="setDocumentAttributes" />
     <bpmn:sequenceFlow id="Flow_BackFromGlobalRevision" sourceRef="Task_GlobalRevision" targetRef="Gateway_0yofwp4" />
@@ -830,25 +830,25 @@ log.info("PROCESS [{}] ---End Сборка динамического маршр
           </camunda:inputParameter>
         </camunda:inputOutput>
       </bpmn:extensionElements>
-      <bpmn:incoming>Flow_1aombnk</bpmn:incoming>
-      <bpmn:outgoing>Flow_00ss0x4</bpmn:outgoing>
+      <bpmn:incoming>Flow_0dg2umr</bpmn:incoming>
+      <bpmn:outgoing>Flow_0pcltnz</bpmn:outgoing>
     </bpmn:serviceTask>
-    <bpmn:sequenceFlow id="Flow_00ss0x4" sourceRef="Activity_15o3czr" targetRef="noticeOfApproved" />
     <bpmn:serviceTask id="noticeOfApproved" name="Отправка уведомления о Согласовании" camunda:delegateExpression="#{notificationSender}">
       <bpmn:extensionElements>
         <camunda:inputOutput>
-          <camunda:inputParameter name="messageCode">NTB0600_APPROVED</camunda:inputParameter>
+          <camunda:inputParameter name="messageCode">NTB0600_EXECUTED</camunda:inputParameter>
           <camunda:inputParameter name="addresseeLogins">${initiator}</camunda:inputParameter>
           <camunda:inputParameter name="properties">${messageProperties}</camunda:inputParameter>
         </camunda:inputOutput>
         <camunda:executionListener event="start">
-          <camunda:script scriptFormat="groovy">execution.setVariable('messageProperties', [commentText: 'Сюда добавим комментарий'])</camunda:script>
+          <camunda:script scriptFormat="groovy">def log = org.slf4j.LoggerFactory.getLogger("${processCode}_noticeOfApproved")
+log.info("PIB0600_DYNAMIC_ROUTING_MAIN DSB0600_EXECUTED setVariable messageProperties")
+execution.setVariable('messageProperties', [commentText: 'Сюда добавим комментарий'])</camunda:script>
         </camunda:executionListener>
       </bpmn:extensionElements>
-      <bpmn:incoming>Flow_00ss0x4</bpmn:incoming>
-      <bpmn:outgoing>Flow_15tfl2i</bpmn:outgoing>
+      <bpmn:incoming>Flow_1aombnk</bpmn:incoming>
+      <bpmn:outgoing>Flow_0dg2umr</bpmn:outgoing>
     </bpmn:serviceTask>
-    <bpmn:sequenceFlow id="Flow_15tfl2i" sourceRef="noticeOfApproved" targetRef="EndEvent_1" />
     <bpmn:callActivity id="StepExecution" name="Исполнение шага" calledElement="PIB0600_STEP_EXECUTION">
       <bpmn:extensionElements>
         <camunda:in source="currentStep" target="currentStep" />
@@ -868,7 +868,7 @@ log.info("PROCESS [{}] ---End Сборка динамического маршр
       <bpmn:outgoing>Flow_ToGlobalRevision</bpmn:outgoing>
       <bpmn:outgoing>Flow_ToRejectTask</bpmn:outgoing>
     </bpmn:exclusiveGateway>
-    <bpmn:sequenceFlow id="Flow_1aombnk" sourceRef="Gateway_CheckStepOutcome" targetRef="Activity_15o3czr" />
+    <bpmn:sequenceFlow id="Flow_1aombnk" sourceRef="Gateway_CheckStepOutcome" targetRef="noticeOfApproved" />
     <bpmn:intermediateThrowEvent id="Event_1a2s7o8" name="на изменение Статуса">
       <bpmn:incoming>Flow_ToGlobalRevision</bpmn:incoming>
       <bpmn:outgoing>Flow_1ar83bi</bpmn:outgoing>
@@ -891,6 +891,8 @@ execution.setVariable("statusCode", "DSB0600_REVISE")</camunda:script>
     <bpmn:sequenceFlow id="Flow_ToRejectTask" sourceRef="Gateway_CheckStepOutcome" targetRef="Event_122ibhp">
       <bpmn:conditionExpression xsi_1:type="bpmn:tFormalExpression">${taskOutcome == 'TAB0600_DECLINE'}</bpmn:conditionExpression>
     </bpmn:sequenceFlow>
+    <bpmn:sequenceFlow id="Flow_0dg2umr" sourceRef="noticeOfApproved" targetRef="Activity_15o3czr" />
+    <bpmn:sequenceFlow id="Flow_0pcltnz" sourceRef="Activity_15o3czr" targetRef="EndEvent_1" />
   </bpmn:process>
   <bpmn:escalation id="Escalation_25pft9f" name="STATUS" escalationCode="STATUS" />
   <bpmn:error id="Error_0aexqe7" name="ERROR" errorCode="ERROR" camunda:errorMessage="errorMessage" />
@@ -905,12 +907,6 @@ execution.setVariable("statusCode", "DSB0600_REVISE")</camunda:script>
       <bpmndi:BPMNShape id="Task_GlobalRevision_di" bpmnElement="Task_GlobalRevision">
         <dc:Bounds x="670" y="463" width="100" height="80" />
         <bpmndi:BPMNLabel />
-      </bpmndi:BPMNShape>
-      <bpmndi:BPMNShape id="EndEvent_1_di" bpmnElement="EndEvent_1">
-        <dc:Bounds x="1242" y="232" width="36" height="36" />
-        <bpmndi:BPMNLabel>
-          <dc:Bounds x="1231" y="275" width="60" height="14" />
-        </bpmndi:BPMNLabel>
       </bpmndi:BPMNShape>
       <bpmndi:BPMNShape id="Event_1ciaew0_di" bpmnElement="catchEventError">
         <dc:Bounds x="182" y="742" width="36" height="36" />
@@ -964,6 +960,16 @@ execution.setVariable("statusCode", "DSB0600_REVISE")</camunda:script>
         <dc:Bounds x="250" y="210" width="100" height="80" />
         <bpmndi:BPMNLabel />
       </bpmndi:BPMNShape>
+      <bpmndi:BPMNShape id="BPMNShape_12u2l6v" bpmnElement="noticeOfApproved">
+        <dc:Bounds x="810" y="210" width="100" height="80" />
+        <bpmndi:BPMNLabel />
+      </bpmndi:BPMNShape>
+      <bpmndi:BPMNShape id="EndEvent_1_di" bpmnElement="EndEvent_1">
+        <dc:Bounds x="1112" y="232" width="36" height="36" />
+        <bpmndi:BPMNLabel>
+          <dc:Bounds x="1101" y="275" width="60" height="14" />
+        </bpmndi:BPMNLabel>
+      </bpmndi:BPMNShape>
       <bpmndi:BPMNShape id="Activity_1fm3yfi_di" bpmnElement="Activity_0dtqxyu" isExpanded="true">
         <dc:Bounds x="810" y="720" width="430" height="200" />
         <bpmndi:BPMNLabel />
@@ -1015,10 +1021,6 @@ execution.setVariable("statusCode", "DSB0600_REVISE")</camunda:script>
       </bpmndi:BPMNShape>
       <bpmndi:BPMNShape id="BPMNShape_0k2fgfm" bpmnElement="Activity_15o3czr">
         <dc:Bounds x="960" y="210" width="100" height="80" />
-        <bpmndi:BPMNLabel />
-      </bpmndi:BPMNShape>
-      <bpmndi:BPMNShape id="BPMNShape_12u2l6v" bpmnElement="noticeOfApproved">
-        <dc:Bounds x="1100" y="210" width="100" height="80" />
         <bpmndi:BPMNLabel />
       </bpmndi:BPMNShape>
       <bpmndi:BPMNShape id="Activity_1u7v086_di" bpmnElement="StepExecution">
@@ -1107,21 +1109,13 @@ execution.setVariable("statusCode", "DSB0600_REVISE")</camunda:script>
         <di_1:waypoint x="440" y="308" />
         <di_1:waypoint x="440" y="345" />
       </bpmndi:BPMNEdge>
-      <bpmndi:BPMNEdge id="Flow_00ss0x4_di" bpmnElement="Flow_00ss0x4">
-        <di_1:waypoint x="1060" y="250" />
-        <di_1:waypoint x="1100" y="250" />
-      </bpmndi:BPMNEdge>
-      <bpmndi:BPMNEdge id="Flow_15tfl2i_di" bpmnElement="Flow_15tfl2i">
-        <di_1:waypoint x="1200" y="250" />
-        <di_1:waypoint x="1242" y="250" />
-      </bpmndi:BPMNEdge>
       <bpmndi:BPMNEdge id="Flow_0ywojgm_di" bpmnElement="Flow_0ywojgm">
         <di_1:waypoint x="640" y="250" />
         <di_1:waypoint x="695" y="250" />
       </bpmndi:BPMNEdge>
       <bpmndi:BPMNEdge id="Flow_1aombnk_di" bpmnElement="Flow_1aombnk">
         <di_1:waypoint x="745" y="250" />
-        <di_1:waypoint x="960" y="250" />
+        <di_1:waypoint x="810" y="250" />
       </bpmndi:BPMNEdge>
       <bpmndi:BPMNEdge id="Flow_1dumnm6_di" bpmnElement="Flow_ToGlobalRevision">
         <di_1:waypoint x="720" y="275" />
@@ -1137,6 +1131,14 @@ execution.setVariable("statusCode", "DSB0600_REVISE")</camunda:script>
       <bpmndi:BPMNEdge id="Flow_1jlkrji_di" bpmnElement="Flow_ToRejectTask">
         <di_1:waypoint x="720" y="225" />
         <di_1:waypoint x="720" y="141" />
+      </bpmndi:BPMNEdge>
+      <bpmndi:BPMNEdge id="Flow_0dg2umr_di" bpmnElement="Flow_0dg2umr">
+        <di_1:waypoint x="910" y="250" />
+        <di_1:waypoint x="960" y="250" />
+      </bpmndi:BPMNEdge>
+      <bpmndi:BPMNEdge id="Flow_0pcltnz_di" bpmnElement="Flow_0pcltnz">
+        <di_1:waypoint x="1060" y="250" />
+        <di_1:waypoint x="1112" y="250" />
       </bpmndi:BPMNEdge>
     </bpmndi:BPMNPlane>
   </bpmndi:BPMNDiagram>
