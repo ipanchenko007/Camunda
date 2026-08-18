@@ -649,6 +649,7 @@ import org.camunda.bpm.engine.delegate.BpmnError
 //Использование import groovy.json.JsonBuilder позволяет удобно формировать новые JSON-структуры внутри скрипта Camunda 7
 import groovy.json.JsonBuilder
 
+//Рекомендаци ИИ: Заменить на статический строковый логгер платформы
 def log = org.slf4j.LoggerFactory.getLogger("${processCode}_setupStages")
 def processInstanceId = execution.getProcessInstanceId()
 log.info("PROCESS [{}] ---Start Сборка динамического маршрута---", processInstanceId)
@@ -1098,6 +1099,8 @@ if (stepsCollection.isEmpty()) {
 }
 
 //Если в форме документа сохранена информация об ошибке, а теперь ошибки нет, то чистим значение ERROR_MESSAGE и ERROR_FLAG_YN (если есть)
+//Вариант 1. Гашение ошибки интеграции - Пока используем его (см. блок catch)!
+//Вариант 2. Вынос очистки в отдельный Service Task с асинхронной поддержкой - Оставим на будущее!
 def oldErrorValue = metaMap?.attributes?.ERROR_MESSAGE ?: ""
 if (oldErrorValue != "" &amp;&amp; errorMessage == "") {
   //Вариант 1. С использованием groovy.json.JsonBuilder
@@ -1117,10 +1120,11 @@ if (oldErrorValue != "" &amp;&amp; errorMessage == "") {
     restClient.execute(execution)
   
   } catch (Exception e) {
-    log.info("PROCESS [{}] Error call fullPath: {} body: {}", processInstanceId, fullPath, errorJsonMap)
-    errorMessage = "Не удалось очистить атрибут ERROR_MESSAGE"
-    //execution.setVariable("errorMessage", errorMessage) //Сохраним значение errorMessage - Лишнее, т.к. значение сохранится в boundaryEvent
-    throw new BpmnError("ERROR", errorMessage)
+    // Вместо обрушения процесса — мягко логируем ошибку интеграции. 
+    // Процесс НЕ зациклится, а продолжит построение маршрута.
+    log.error("PROCESS [{}]: Критическая ошибка Симфонии при очистке атрибутов: {}. Путь: {}", 
+              processInstanceId, e.getMessage(), fullPath)
+    // НЕ выбрасываем throw new BpmnError("ERROR", ...)!
   }  
 }
 
@@ -1206,16 +1210,6 @@ log.info("PROCESS [{}] ---End Сборка динамического маршр
         <bpmndi:BPMNLabel>
           <dc:Bounds x="159" y="282" width="64" height="14" />
         </bpmndi:BPMNLabel>
-      </bpmndi:BPMNShape>
-      <bpmndi:BPMNShape id="EndEvent_1_di" bpmnElement="EndEvent_1">
-        <dc:Bounds x="1942" y="222" width="36" height="36" />
-        <bpmndi:BPMNLabel>
-          <dc:Bounds x="1931" y="265" width="60" height="14" />
-        </bpmndi:BPMNLabel>
-      </bpmndi:BPMNShape>
-      <bpmndi:BPMNShape id="BPMNShape_12u2l6v" bpmnElement="noticeOfApproved">
-        <dc:Bounds x="1800" y="200" width="100" height="80" />
-        <bpmndi:BPMNLabel />
       </bpmndi:BPMNShape>
       <bpmndi:BPMNShape id="DynamicStepsSubprocess_di" bpmnElement="DynamicStepsSubprocess" isExpanded="true">
         <dc:Bounds x="560" y="80" width="1050" height="340" />
@@ -1340,6 +1334,12 @@ log.info("PROCESS [{}] ---End Сборка динамического маршр
         <dc:Bounds x="690" y="530" width="100" height="80" />
         <bpmndi:BPMNLabel />
       </bpmndi:BPMNShape>
+      <bpmndi:BPMNShape id="EndEvent_1_di" bpmnElement="EndEvent_1">
+        <dc:Bounds x="1942" y="222" width="36" height="36" />
+        <bpmndi:BPMNLabel>
+          <dc:Bounds x="1931" y="265" width="60" height="14" />
+        </bpmndi:BPMNLabel>
+      </bpmndi:BPMNShape>
       <bpmndi:BPMNShape id="Event_1ciaew0_di" bpmnElement="catchEventError">
         <dc:Bounds x="602" y="852" width="36" height="36" />
         <bpmndi:BPMNLabel>
@@ -1455,6 +1455,10 @@ log.info("PROCESS [{}] ---End Сборка динамического маршр
       </bpmndi:BPMNShape>
       <bpmndi:BPMNShape id="BPMNShape_0k2fgfm" bpmnElement="Activity_15o3czr">
         <dc:Bounds x="1660" y="200" width="100" height="80" />
+        <bpmndi:BPMNLabel />
+      </bpmndi:BPMNShape>
+      <bpmndi:BPMNShape id="BPMNShape_12u2l6v" bpmnElement="noticeOfApproved">
+        <dc:Bounds x="1800" y="200" width="100" height="80" />
         <bpmndi:BPMNLabel />
       </bpmndi:BPMNShape>
       <bpmndi:BPMNShape id="Event_1aftt83_di" bpmnElement="Event_1if494a">
