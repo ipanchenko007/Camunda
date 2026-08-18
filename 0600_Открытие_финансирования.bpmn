@@ -1,0 +1,1491 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<bpmn:definitions xmlns:bpmn="http://www.omg.org/spec/BPMN/20100524/MODEL" xmlns:bpmndi="http://www.omg.org/spec/BPMN/20100524/DI" xmlns:dc="http://www.omg.org/spec/DD/20100524/DC" xmlns:camunda="http://camunda.org/schema/1.0/bpmn" xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance" xmlns:di="http://www.omg.org/spec/DD/20100524/DI" xmlns:modeler="http://camunda.org/schema/modeler/1.0" id="Definitions_11ao3n0" targetNamespace="http://bpmn.io/schema/bpmn" exporter="Camunda Modeler" exporterVersion="5.31.0" modeler:executionPlatform="Camunda Platform" modeler:executionPlatformVersion="7.22.0">
+  <bpmn:process id="PIB0600" name="0600 Открытие финансирования" isExecutable="true" camunda:historyTimeToLive="365">
+    <bpmn:startEvent id="StartEvent_1" name="StartEvent_1">
+      <bpmn:extensionElements>
+        <camunda:executionListener event="end">
+          <camunda:script scriptFormat="groovy">/* 0600 Start Event (Execution listeners: End) "StartEvent_1" (StartEvent_1) */
+/* Заполнение начальных значений процесса */
+import java.text.SimpleDateFormat
+
+// Задаем BusinessKey Склеиваем префикс и часть системного ID
+def date = new SimpleDateFormat("yyyyMMdd").format(new Date())
+def random = Math.abs(new Random().nextInt() % 1000).toString().padLeft(3, '0')
+def bKey = "PROC-${date}-${random}"
+execution.setProcessBusinessKey(bKey)
+
+// Получаем системные данные (из кэша движка)
+def processInstanceId = execution.processInstanceId 
+def processDefinition = execution.processEngineServices.repositoryService
+    .getProcessDefinition(execution.processDefinitionId)
+
+// Достаем Имя процесса из этого объекта
+def processName = processDefinition.name ?: "UNKNOWN Process"
+
+// Определяем processCode (берем символы до первого пробела)
+def processCode = processName.takeWhile { it != ' ' } 
+
+// Сохраняем ВСЕ в ГЛОБАЛЬНЫЕ переменные процесса (Map-синтаксис)
+execution.setVariables(
+  ["processInstanceId": processInstanceId
+  ,"processName": processName
+  ,"processCode": processCode
+  ])
+
+//Определим логер
+def log = org.slf4j.LoggerFactory.getLogger("${processCode}_Start_Event")
+
+//log.info("PROCESS: [${processInstanceId}] processCode: '${processCode}' processName: '${processName}'")
+log.info("PROCESS: [{}] processCode: '{}' processName: '{}'", processInstanceId, processCode, processName)
+
+// Выведет все текущие переменные процесса в формате {key1=val1, key2=val2}
+if (log.isDebugEnabled()) {
+    log.debug("PROCESS [{}]: ALL VARS: {}", processInstanceId, execution.variables)
+}
+</camunda:script>
+        </camunda:executionListener>
+      </bpmn:extensionElements>
+      <bpmn:outgoing>Flow_1as5qye</bpmn:outgoing>
+    </bpmn:startEvent>
+    <bpmn:intermediateCatchEvent id="catchEventDecline" name="Отклонить">
+      <bpmn:outgoing>Flow_18wue0r</bpmn:outgoing>
+      <bpmn:linkEventDefinition id="LinkEventDefinition_0qb3vxx" name="linkDecline" />
+    </bpmn:intermediateCatchEvent>
+    <bpmn:endEvent id="Event_1xeqdh0">
+      <bpmn:incoming>Flow_14rok4g</bpmn:incoming>
+      <bpmn:terminateEventDefinition id="TerminateEventDefinition_1mw3lpu" />
+    </bpmn:endEvent>
+    <bpmn:serviceTask id="noticeOfDecline" name="Отправка уведомления об Отклонении" camunda:delegateExpression="#{notificationSender}">
+      <bpmn:extensionElements>
+        <camunda:inputOutput>
+          <camunda:inputParameter name="messageCode">NTB0600_DECLINED</camunda:inputParameter>
+          <camunda:inputParameter name="addresseeLogins">${initiator}</camunda:inputParameter>
+          <camunda:inputParameter name="properties">${notificationProps}</camunda:inputParameter>
+        </camunda:inputOutput>
+      </bpmn:extensionElements>
+      <bpmn:incoming>Flow_1121wso</bpmn:incoming>
+      <bpmn:outgoing>Flow_14rok4g</bpmn:outgoing>
+    </bpmn:serviceTask>
+    <bpmn:serviceTask id="settingStatusDecline" name="Установка статуса &#34;Отклонено&#34;" camunda:delegateExpression="#{restClient}">
+      <bpmn:extensionElements>
+        <camunda:inputOutput>
+          <camunda:inputParameter name="serviceName">documents</camunda:inputParameter>
+          <camunda:inputParameter name="path">/private/documents/{guid}/_status</camunda:inputParameter>
+          <camunda:inputParameter name="pathParams">
+            <camunda:map>
+              <camunda:entry key="guid">${entityGuid}</camunda:entry>
+            </camunda:map>
+          </camunda:inputParameter>
+          <camunda:inputParameter name="method">PUT</camunda:inputParameter>
+          <camunda:inputParameter name="body">
+            <camunda:map>
+              <camunda:entry key="statusCode">DSB0600_DECLINE</camunda:entry>
+            </camunda:map>
+          </camunda:inputParameter>
+        </camunda:inputOutput>
+      </bpmn:extensionElements>
+      <bpmn:incoming>Flow_18wue0r</bpmn:incoming>
+      <bpmn:outgoing>Flow_1wskxs0</bpmn:outgoing>
+    </bpmn:serviceTask>
+    <bpmn:serviceTask id="Activity_0pntbzb" name="Запрос атрибутов документа" camunda:delegateExpression="#{restClient}">
+      <bpmn:extensionElements>
+        <camunda:inputOutput>
+          <camunda:inputParameter name="serviceName">documents</camunda:inputParameter>
+          <camunda:inputParameter name="path">/private/documents/{guid}</camunda:inputParameter>
+          <camunda:inputParameter name="pathParams">
+            <camunda:map>
+              <camunda:entry key="guid">${entityGuid}</camunda:entry>
+            </camunda:map>
+          </camunda:inputParameter>
+          <camunda:inputParameter name="method">GET</camunda:inputParameter>
+          <camunda:inputParameter name="resultVarName">baseDocument</camunda:inputParameter>
+        </camunda:inputOutput>
+        <camunda:executionListener event="end">
+          <camunda:script scriptFormat="groovy">execution.setVariable('entityMetadata', S(baseDocument).prop('data'));</camunda:script>
+        </camunda:executionListener>
+      </bpmn:extensionElements>
+      <bpmn:incoming>Flow_1wskxs0</bpmn:incoming>
+      <bpmn:outgoing>Flow_1121wso</bpmn:outgoing>
+    </bpmn:serviceTask>
+    <bpmn:intermediateCatchEvent id="catchEventError" name="Обработка ошибки">
+      <bpmn:outgoing>Flow_0sychlg</bpmn:outgoing>
+      <bpmn:linkEventDefinition id="LinkEventDefinition_07dyk7w" name="linkError" />
+    </bpmn:intermediateCatchEvent>
+    <bpmn:scriptTask id="createErrorMap" name="Create ErrorMap" scriptFormat="groovy">
+      <bpmn:incoming>Flow_0sychlg</bpmn:incoming>
+      <bpmn:outgoing>Flow_19al8ty</bpmn:outgoing>
+      <bpmn:script>/* 0600 Script Task "Create ErrorMap" (createErrorMap) */
+// JsonBuilder - для преобразования объектов Groovy (Map, List, POGO) в строку формата JSON
+import groovy.json.JsonBuilder
+def log = org.slf4j.LoggerFactory.getLogger("${processCode}_createErrorMap")
+def processInstanceId = execution.getProcessInstanceId()
+
+def errorMsg = execution.getVariable("errorMessage")
+//log.info("PROCESS [{}] Received errorMsg: {}", processInstanceId, errorMsg)
+
+// Используем конструктор JsonBuilder для создания валидной JSON-строки
+def errorMapJson = new JsonBuilder(["ERROR_MESSAGE": errorMsg, "ERROR_FLAG_YN":"Y"]).toString()
+
+//Сохраняем в переменную процесса
+execution.setVariable("errorMap", errorMapJson)
+//log.info("PROCESS [{}] Created errorMap: {}", processInstanceId, errorMapJson)
+</bpmn:script>
+    </bpmn:scriptTask>
+    <bpmn:serviceTask id="Activity_006k6ir" name="Обновление документа (errorMap)" camunda:delegateExpression="#{restClient}">
+      <bpmn:extensionElements>
+        <camunda:inputOutput>
+          <camunda:inputParameter name="serviceName">documents</camunda:inputParameter>
+          <camunda:inputParameter name="path">private/documents/{guid}/_attributes</camunda:inputParameter>
+          <camunda:inputParameter name="method">PUT</camunda:inputParameter>
+          <camunda:inputParameter name="pathParams">
+            <camunda:map>
+              <camunda:entry key="guid">${entityGuid}</camunda:entry>
+            </camunda:map>
+          </camunda:inputParameter>
+          <camunda:inputParameter name="body">${errorMap}</camunda:inputParameter>
+        </camunda:inputOutput>
+      </bpmn:extensionElements>
+      <bpmn:incoming>Flow_19al8ty</bpmn:incoming>
+      <bpmn:outgoing>Flow_0cqbr2h</bpmn:outgoing>
+    </bpmn:serviceTask>
+    <bpmn:serviceTask id="Activity_1ejr2au" name="Исключение некорректности данных" camunda:delegateExpression="#{raiseException}">
+      <bpmn:extensionElements>
+        <camunda:inputOutput>
+          <camunda:inputParameter name="httpStatusCode">400</camunda:inputParameter>
+          <camunda:inputParameter name="errorMessage">Обнаружены ошибки, см. поле 'Ошибка' в форме документа</camunda:inputParameter>
+        </camunda:inputOutput>
+      </bpmn:extensionElements>
+      <bpmn:incoming>Flow_0cqbr2h</bpmn:incoming>
+      <bpmn:outgoing>Flow_1nb5uug</bpmn:outgoing>
+    </bpmn:serviceTask>
+    <bpmn:subProcess id="Activity_0dtqxyu" name="Изменение Статуса при назначении User Task" triggeredByEvent="true">
+      <bpmn:serviceTask id="Activity_11xhg60" name="Установка статуса" camunda:delegateExpression="#{restClient}">
+        <bpmn:extensionElements>
+          <camunda:inputOutput>
+            <camunda:inputParameter name="serviceName">documents</camunda:inputParameter>
+            <camunda:inputParameter name="path">/private/documents/{guid}/_status</camunda:inputParameter>
+            <camunda:inputParameter name="pathParams">
+              <camunda:map>
+                <camunda:entry key="guid">${entityGuid}</camunda:entry>
+              </camunda:map>
+            </camunda:inputParameter>
+            <camunda:inputParameter name="method">PUT</camunda:inputParameter>
+            <camunda:inputParameter name="body">
+              <camunda:map>
+                <camunda:entry key="statusCode">${statusCode}</camunda:entry>
+              </camunda:map>
+            </camunda:inputParameter>
+          </camunda:inputOutput>
+        </bpmn:extensionElements>
+        <bpmn:incoming>Flow_0mkcmy6</bpmn:incoming>
+        <bpmn:outgoing>Flow_0zv2mkg</bpmn:outgoing>
+      </bpmn:serviceTask>
+      <bpmn:endEvent id="Event_1v35zna">
+        <bpmn:incoming>Flow_0c5dnyh</bpmn:incoming>
+      </bpmn:endEvent>
+      <bpmn:serviceTask id="Activity_0afnqx2" name="Запрос атрибутов документа" camunda:delegateExpression="#{restClient}">
+        <bpmn:documentation>Обновление entityMetadata после изменения статуса. Лишняя операция, надо придумать что-то лучше!</bpmn:documentation>
+        <bpmn:extensionElements>
+          <camunda:inputOutput>
+            <camunda:inputParameter name="serviceName">documents</camunda:inputParameter>
+            <camunda:inputParameter name="path">/private/documents/{guid}</camunda:inputParameter>
+            <camunda:inputParameter name="pathParams">
+              <camunda:map>
+                <camunda:entry key="guid">${entityGuid}</camunda:entry>
+              </camunda:map>
+            </camunda:inputParameter>
+            <camunda:inputParameter name="method">GET</camunda:inputParameter>
+            <camunda:inputParameter name="resultVarName">baseDocument</camunda:inputParameter>
+          </camunda:inputOutput>
+          <camunda:executionListener event="end">
+            <camunda:script scriptFormat="groovy">execution.setVariable('entityMetadata', S(baseDocument).prop('data'));</camunda:script>
+          </camunda:executionListener>
+        </bpmn:extensionElements>
+        <bpmn:incoming>Flow_0zv2mkg</bpmn:incoming>
+        <bpmn:outgoing>Flow_0c5dnyh</bpmn:outgoing>
+      </bpmn:serviceTask>
+      <bpmn:startEvent id="Event_14d61rq" isInterrupting="false">
+        <bpmn:outgoing>Flow_0mkcmy6</bpmn:outgoing>
+        <bpmn:escalationEventDefinition id="EscalationEventDefinition_16h7scj" escalationRef="Escalation_25pft9f" />
+      </bpmn:startEvent>
+      <bpmn:sequenceFlow id="Flow_0mkcmy6" sourceRef="Event_14d61rq" targetRef="Activity_11xhg60" />
+      <bpmn:sequenceFlow id="Flow_0zv2mkg" sourceRef="Activity_11xhg60" targetRef="Activity_0afnqx2" />
+      <bpmn:sequenceFlow id="Flow_0c5dnyh" sourceRef="Activity_0afnqx2" targetRef="Event_1v35zna" />
+    </bpmn:subProcess>
+    <bpmn:endEvent id="Event_04zy2x1" name="Заглушка для красоты">
+      <bpmn:incoming>Flow_1nb5uug</bpmn:incoming>
+    </bpmn:endEvent>
+    <bpmn:intermediateCatchEvent id="Event_0ddtg1o" name="Обновление Шага формы">
+      <bpmn:outgoing>Flow_13n1utu</bpmn:outgoing>
+      <bpmn:linkEventDefinition id="LinkEventDefinition_0euirb4" name="linkUpdateStep" />
+    </bpmn:intermediateCatchEvent>
+    <bpmn:scriptTask id="Activity_06j7pgk" name="Create StepFormMap" scriptFormat="groovy">
+      <bpmn:incoming>Flow_13n1utu</bpmn:incoming>
+      <bpmn:outgoing>Flow_1xaw8d6</bpmn:outgoing>
+      <bpmn:script>/* 0600 Script Task "Create StepFormMap" (createStepFormMap) */
+// JsonBuilder - для преобразования объектов Groovy (Map, List, POGO) в строку формата JSON
+import groovy.json.JsonBuilder
+def log = org.slf4j.LoggerFactory.getLogger("${processCode}_createStepFormMap")
+def processInstanceId = execution.getProcessInstanceId()
+
+def stepForm = execution.getVariable("stepForm")
+log.info("PROCESS [{}] Received stepForm: {}", processInstanceId, stepForm)
+
+// Используем конструктор JsonBuilder для создания валидной JSON-строки
+def stepFormJson = new JsonBuilder(["ABB0600_STEP_FORM": stepForm]).toString()
+
+//Сохраняем в переменную процесса
+execution.setVariable("stepFormMap", stepFormJson)
+log.info("PROCESS [{}] Created stepFormMap: {}", processInstanceId, stepFormJson)
+</bpmn:script>
+    </bpmn:scriptTask>
+    <bpmn:serviceTask id="Activity_14fiknn" name="Обновление документа (stepFormMap)" camunda:delegateExpression="#{restClient}">
+      <bpmn:extensionElements>
+        <camunda:inputOutput>
+          <camunda:inputParameter name="serviceName">documents</camunda:inputParameter>
+          <camunda:inputParameter name="path">private/documents/{guid}/_attributes</camunda:inputParameter>
+          <camunda:inputParameter name="method">PUT</camunda:inputParameter>
+          <camunda:inputParameter name="pathParams">
+            <camunda:map>
+              <camunda:entry key="guid">${entityGuid}</camunda:entry>
+            </camunda:map>
+          </camunda:inputParameter>
+          <camunda:inputParameter name="body">${stepFormMap}</camunda:inputParameter>
+        </camunda:inputOutput>
+      </bpmn:extensionElements>
+      <bpmn:incoming>Flow_1xaw8d6</bpmn:incoming>
+      <bpmn:outgoing>Flow_0kzsc3l</bpmn:outgoing>
+    </bpmn:serviceTask>
+    <bpmn:serviceTask id="Activity_1j32zjs" name="Возврат к форме" camunda:delegateExpression="#{raiseException}">
+      <bpmn:extensionElements>
+        <camunda:inputOutput>
+          <camunda:inputParameter name="httpStatusCode">400</camunda:inputParameter>
+          <camunda:inputParameter name="errorMessage">Переход к форме контроля данных</camunda:inputParameter>
+        </camunda:inputOutput>
+      </bpmn:extensionElements>
+      <bpmn:incoming>Flow_0kzsc3l</bpmn:incoming>
+      <bpmn:outgoing>Flow_04si9zx</bpmn:outgoing>
+    </bpmn:serviceTask>
+    <bpmn:endEvent id="Event_1u66co7" name="Заглушка для красоты">
+      <bpmn:incoming>Flow_04si9zx</bpmn:incoming>
+    </bpmn:endEvent>
+    <bpmn:sequenceFlow id="Flow_18wue0r" sourceRef="catchEventDecline" targetRef="settingStatusDecline" />
+    <bpmn:sequenceFlow id="Flow_14rok4g" sourceRef="noticeOfDecline" targetRef="Event_1xeqdh0" />
+    <bpmn:sequenceFlow id="Flow_1121wso" sourceRef="Activity_0pntbzb" targetRef="noticeOfDecline" />
+    <bpmn:sequenceFlow id="Flow_1wskxs0" sourceRef="settingStatusDecline" targetRef="Activity_0pntbzb" />
+    <bpmn:sequenceFlow id="Flow_0sychlg" sourceRef="catchEventError" targetRef="createErrorMap" />
+    <bpmn:sequenceFlow id="Flow_19al8ty" sourceRef="createErrorMap" targetRef="Activity_006k6ir" />
+    <bpmn:sequenceFlow id="Flow_0cqbr2h" sourceRef="Activity_006k6ir" targetRef="Activity_1ejr2au" />
+    <bpmn:sequenceFlow id="Flow_1nb5uug" sourceRef="Activity_1ejr2au" targetRef="Event_04zy2x1" />
+    <bpmn:sequenceFlow id="Flow_13n1utu" sourceRef="Event_0ddtg1o" targetRef="Activity_06j7pgk" />
+    <bpmn:sequenceFlow id="Flow_1xaw8d6" sourceRef="Activity_06j7pgk" targetRef="Activity_14fiknn" />
+    <bpmn:sequenceFlow id="Flow_0kzsc3l" sourceRef="Activity_14fiknn" targetRef="Activity_1j32zjs" />
+    <bpmn:sequenceFlow id="Flow_04si9zx" sourceRef="Activity_1j32zjs" targetRef="Event_1u66co7" />
+    <bpmn:serviceTask id="setDocumentAttributes" name="Запрос атрибутов документа" camunda:delegateExpression="#{restClient}">
+      <bpmn:extensionElements>
+        <camunda:inputOutput>
+          <camunda:inputParameter name="serviceName">documents</camunda:inputParameter>
+          <camunda:inputParameter name="path">/private/documents/{guid}</camunda:inputParameter>
+          <camunda:inputParameter name="pathParams">
+            <camunda:map>
+              <camunda:entry key="guid">${entityGuid}</camunda:entry>
+            </camunda:map>
+          </camunda:inputParameter>
+          <camunda:inputParameter name="method">GET</camunda:inputParameter>
+          <camunda:inputParameter name="resultVarName">baseDocument</camunda:inputParameter>
+        </camunda:inputOutput>
+        <camunda:executionListener event="end">
+          <camunda:script scriptFormat="groovy">execution.setVariable('entityMetadata', S(baseDocument).prop('data'));</camunda:script>
+        </camunda:executionListener>
+      </bpmn:extensionElements>
+      <bpmn:incoming>Flow_1as5qye</bpmn:incoming>
+      <bpmn:incoming>Flow_1it8yut</bpmn:incoming>
+      <bpmn:outgoing>Flow_1n2o28n</bpmn:outgoing>
+    </bpmn:serviceTask>
+    <bpmn:sequenceFlow id="Flow_1as5qye" sourceRef="StartEvent_1" targetRef="setDocumentAttributes" />
+    <bpmn:userTask id="REVISE" name="Доработка (REVISE)" camunda:asyncBefore="true" camunda:assignee="${initiator}" camunda:dueDate="#{extensions.timeService.addCalendarDaysTillEndOfDay(1)}" camunda:priority="150">
+      <bpmn:documentation>${S(baseDocument).prop("data").prop("typeTitle").stringValue()} № ${S(baseDocument).prop("data").prop("projectNumber").stringValue()}</bpmn:documentation>
+      <bpmn:extensionElements>
+        <camunda:inputOutput>
+          <camunda:inputParameter name="actions">TAB0600_REAPPROVE,TAB0600_DECLINE</camunda:inputParameter>
+          <camunda:inputParameter name="disableDefaultNotifications">${true}</camunda:inputParameter>
+        </camunda:inputOutput>
+        <camunda:taskListener delegateExpression="#{userTaskNotificationListener}" event="create">
+          <camunda:field name="messageCode">
+            <camunda:string>NTB0600_TASK_ASSIGNED</camunda:string>
+          </camunda:field>
+          <camunda:field name="properties">
+            <camunda:expression>${notificationProps}</camunda:expression>
+          </camunda:field>
+        </camunda:taskListener>
+      </bpmn:extensionElements>
+      <bpmn:incoming>Flow_0so1809</bpmn:incoming>
+      <bpmn:outgoing>Flow_115jbpt</bpmn:outgoing>
+    </bpmn:userTask>
+    <bpmn:intermediateCatchEvent id="catchEventRevise" name="на Доработку">
+      <bpmn:outgoing>Flow_1s3qsi8</bpmn:outgoing>
+      <bpmn:linkEventDefinition id="LinkEventDefinition_0fsxabu" name="linkRevise" />
+    </bpmn:intermediateCatchEvent>
+    <bpmn:exclusiveGateway id="Gateway_0yofwp4" default="Flow_1it8yut">
+      <bpmn:incoming>Flow_115jbpt</bpmn:incoming>
+      <bpmn:outgoing>Flow_0ocexp9</bpmn:outgoing>
+      <bpmn:outgoing>Flow_1it8yut</bpmn:outgoing>
+    </bpmn:exclusiveGateway>
+    <bpmn:intermediateThrowEvent id="Event_001d5wo" name="Отклонить">
+      <bpmn:incoming>Flow_0ocexp9</bpmn:incoming>
+      <bpmn:linkEventDefinition id="LinkEventDefinition_199wjvv" name="linkDecline" />
+    </bpmn:intermediateThrowEvent>
+    <bpmn:intermediateThrowEvent id="Event_1a2s7o8" name="на изменение Статуса">
+      <bpmn:incoming>Flow_1s3qsi8</bpmn:incoming>
+      <bpmn:outgoing>Flow_0so1809</bpmn:outgoing>
+      <bpmn:escalationEventDefinition id="EscalationEventDefinition_0nawpqx" escalationRef="Escalation_25pft9f" />
+    </bpmn:intermediateThrowEvent>
+    <bpmn:sequenceFlow id="Flow_0so1809" sourceRef="Event_1a2s7o8" targetRef="REVISE" />
+    <bpmn:sequenceFlow id="Flow_115jbpt" sourceRef="REVISE" targetRef="Gateway_0yofwp4" />
+    <bpmn:sequenceFlow id="Flow_1s3qsi8" name="See: Take" sourceRef="catchEventRevise" targetRef="Event_1a2s7o8">
+      <bpmn:extensionElements>
+        <camunda:executionListener event="take">
+          <camunda:script scriptFormat="groovy">//def statusCode = "DSB0600_REVISE"
+execution.setVariable("statusCode", "DSB0600_REVISE")</camunda:script>
+        </camunda:executionListener>
+      </bpmn:extensionElements>
+    </bpmn:sequenceFlow>
+    <bpmn:sequenceFlow id="Flow_0ocexp9" sourceRef="Gateway_0yofwp4" targetRef="Event_001d5wo">
+      <bpmn:conditionExpression xsi:type="bpmn:tFormalExpression">${taskOutcome == 'TAB0600_DECLINE'}</bpmn:conditionExpression>
+    </bpmn:sequenceFlow>
+    <bpmn:sequenceFlow id="Flow_1it8yut" sourceRef="Gateway_0yofwp4" targetRef="setDocumentAttributes" />
+    <bpmn:scriptTask id="dataControl" name="Контроль данных" scriptFormat="groovy">
+      <bpmn:incoming>Flow_0491rza</bpmn:incoming>
+      <bpmn:outgoing>Flow_0noqp32</bpmn:outgoing>
+      <bpmn:script>/* 0600 Script Task "Контроль данных" (dataControl) */
+//Использование import groovy.json.JsonBuilder позволяет удобно формировать новые JSON-структуры внутри скрипта Camunda 7,
+// используя нативный синтаксис Groovy. Это часто удобнее, чем работать напрямую с методами Camunda Spin, когда нужно создать сложный объект «с нуля». 
+import groovy.json.JsonBuilder
+
+// В логах ищите сообщения с тегом "0600_dataControl".
+def log = org.slf4j.LoggerFactory.getLogger("${processCode}_dataControl")
+def processInstanceId = execution.getProcessInstanceId()
+log.info("PROCESS [{}]: --- Starting validation script ---", processInstanceId)
+
+// --- ПОЛУЧЕНИЕ И ДИАГНОСТИКА ВХОДНОГО ДОКУМЕНТА ---
+//def hasErrors = false //Больше не используется!
+def errorMessage = ""
+def errorList = [] //Это пустой список (List/ArrayList)
+
+// Получаем entityMetadata - сохранена в Service Task "Запрос атрибутов документа"
+def entityMetadata = execution.getVariable('entityMetadata')
+// С каким типом данных вы работаете (объект SPIN или обычный Map/String), можно добавить вывод класса:
+log.info("PROCESS [{}]: entityMetadata: {} Class: {}", processInstanceId, entityMetadata, entityMetadata?.getClass())
+
+// Check entityMetadata
+if (entityMetadata == null) {
+  log.error("PROCESS [{}]: ERROR Empty entityMetadata", processInstanceId)
+  // Формируем сообщение об ошибке
+  errorMessage = "Критическая ошибка: не удалось получить или обработать данные документа."
+  //execution.setVariable("errorMessage", errorMessage) //Сохраним значение errorMessage - Лишнее, т.к. значение сохранится в boundaryEvent
+  
+  //Создаем бизнес-исключение
+  throw new org.camunda.bpm.engine.delegate.BpmnError("ERROR", errorMessage)
+  //return; // Прерываем выполнение скрипта
+}
+
+//Получаем Код Типа документа. Понадобится для поиска настройки Исполнителей
+def docType = (entityMetadata.hasProp("project_number") &amp;&amp; !attr.prop("project_number").isNull()) ? entityMetadata.prop("project_number").stringValue() : ""
+
+def notificationProps = [:] // Создаем пустую карту (Map/LinkedHashMap) для данных уведомления
+
+// ЗАПОЛНЯЕМ Map ДЛЯ УВЕДОМЛЕНИЯ - Пока нЕчего передавать!
+//notificationProps.put("documentType", docType)
+log.info("PROCESS [{}]: Check notificationProps: {}", processInstanceId, notificationProps)
+
+// --- ОСНОВНАЯ ЛОГИКА ВАЛИДАЦИИ ---
+log.info("PROCESS [{}]: Starting main validation logic for document attributes...", processInstanceId)
+
+//Временно!!! Сформируем тестовую ошибку! -------------------------------------------------------------------------- 
+//errorList.add("- Временно!!! Сформируем тестовую ошибку (через add).") //Var.1
+//errorList &lt;&lt; "- Временно!!! Сформируем тестовую ошибку (через &lt;&lt;)" //Var.2
+//errorList &lt;&lt; "- Временно!!! Сформируем тестовую ошибку (var 3)" //Var.3
+
+//В Groovy проверка if (variable) автоматически проверяет и на null, и на пустоту (если это строка или коллекция)
+if (!errorList.isEmpty()) {
+  errorMessage = "Обнаружены следующие ошибки:\n" + errorList.join('\n')
+  //execution.setVariable("errorMessage", errorMessage) //Сохраним значение errorMessage - Лишнее, т.к. значение сохранится в boundaryEvent
+  //Заполнение ERROR_MESSAGE и ERROR_FLAG_YN (если есть) выполняется в Script Task "Create ErrorMap" (createErrorMap)
+
+  //Создаем бизнес-исключение
+  throw new org.camunda.bpm.engine.delegate.BpmnError("ERROR", errorMessage)
+}
+
+//Если в форме документа сохранена информация об ошибке, а теперь ошибки нет, то чистим значение ERROR_MESSAGE и ERROR_FLAG_YN (если есть)
+def oldErrorValue = entityMetadata.prop("attributes").hasProp("ERROR_MESSAGE") ? entityMetadata.prop("attributes").prop("ERROR_MESSAGE").stringValue() : ""
+if (oldErrorValue != "" &amp;&amp; errorMessage == "") {
+  errorJsonMap = new JsonBuilder(["ERROR_MESSAGE": "", "ERROR_FLAG_YN": "N"]).toString()
+  execution.setVariableLocal("body", errorJsonMap)
+  
+  //Общие Local переменные для вызова метода обновления атрибутов Документа
+  execution.setVariableLocal("serviceName", "documents")
+  execution.setVariableLocal("method", "PUT")
+  
+  fullPath = "private/documents/${entityGuid}/_attributes"
+  execution.setVariableLocal("path", fullPath)
+  try {
+    //log.info("PROCESS [{}] Clear ERROR_MESSAGE fullPath: {} body: {}", processInstanceId, fullPath, errorJsonMap)
+    restClient.execute(execution)
+  
+  } catch (Exception e) {
+    log.info("PROCESS [{}] Error call fullPath: {} body: {}", processInstanceId, fullPath, errorJsonMap)
+    errorMessage = "Не удалось очистить атрибут ERROR_MESSAGE"
+    //execution.setVariable("errorMessage", errorMessage) //Сохраним значение errorMessage - Лишнее, т.к. значение сохранится в boundaryEvent
+    throw new org.camunda.bpm.engine.delegate.BpmnError("ERROR", errorMessage)
+  }  
+}
+
+// Дозаполняем Map ДЛЯ УВЕДОМЛЕНИЯ
+notificationProps.put("errorMessage", errorMessage)
+
+// СОХРАНЯЕМ ВСЮ Map В ОДНУ ПЕРЕМЕННУЮ ПРОЦЕССА
+execution.setVariable("notificationProps", notificationProps)
+
+log.info("PROCESS [{}]: --- Finished validation script ---", processInstanceId)</bpmn:script>
+    </bpmn:scriptTask>
+    <bpmn:serviceTask id="getRequestUsersService" name="Запрос LDB0600_REQUEST_USERS" camunda:delegateExpression="#{restClient}">
+      <bpmn:extensionElements>
+        <camunda:inputOutput>
+          <camunda:inputParameter name="serviceName">dictionaries</camunda:inputParameter>
+          <camunda:inputParameter name="path">/private/dictionaries/LDB0600_REQUEST_USERS/values?onlyData=true&amp;all=true</camunda:inputParameter>
+          <camunda:inputParameter name="method">GET</camunda:inputParameter>
+          <camunda:inputParameter name="resultVarName">requestUsers</camunda:inputParameter>
+        </camunda:inputOutput>
+        <camunda:executionListener event="start">
+          <camunda:script scriptFormat="groovy">def log = org.slf4j.LoggerFactory.getLogger("${processCode}_getRequestUsersService")
+def processInstanceId = execution.getProcessInstanceId()
+log.info("PROCESS [{}] ---Start--", processInstanceId)</camunda:script>
+        </camunda:executionListener>
+        <camunda:executionListener event="end">
+          <camunda:script scriptFormat="groovy">def log = org.slf4j.LoggerFactory.getLogger("${processCode}_getRequestUsersService")
+def processInstanceId = execution.getProcessInstanceId()
+log.info("PROCESS [{}] Check requestUsers: {} Class: {}", processInstanceId, requestUsers, requestUsers?.getClass())</camunda:script>
+        </camunda:executionListener>
+      </bpmn:extensionElements>
+      <bpmn:incoming>Flow_1n2o28n</bpmn:incoming>
+      <bpmn:outgoing>Flow_0491rza</bpmn:outgoing>
+    </bpmn:serviceTask>
+    <bpmn:scriptTask id="filingInitialExecutionList" name="Предварительная настройка Исполнителей" scriptFormat="groovy">
+      <bpmn:incoming>Flow_0noqp32</bpmn:incoming>
+      <bpmn:outgoing>Flow_0d8hnpd</bpmn:outgoing>
+      <bpmn:script>/* 0600 Script Task "Заполнение предварительной настройки Исполнителей" (filingInitialExecutionList) */
+// JsonSlurper используется внутри Groovy-скриптов для парсинга JSON-строк в объекты Groovy (Map или List)
+import groovy.json.JsonSlurper
+// JsonBuilder - для преобразования объектов Groovy (Map, List, POGO) в строку формата JSON
+//import groovy.json.JsonBuilder //Это «конструктор»
+//Библиотека для преобразования объектов Groovy (Map, List) в формат JSON-строки
+import groovy.json.JsonOutput //Это «молоток» для готовых данных
+import static org.camunda.spin.Spin.*
+
+//Для обработки throw new BpmnError (если есть)
+import org.camunda.bpm.engine.delegate.BpmnError
+
+/* Подготовка initialList - данные для обновления Статической таблицы "INITIAL_EXECUTION_LIST" */
+def log = org.slf4j.LoggerFactory.getLogger("${processCode}_filingInitialExecutionList")
+def processInstanceId = execution.getProcessInstanceId()
+log.info("PROCESS [{}] ---Start--", processInstanceId)
+
+def errorMessage = "" //Изначально ошибки нет.
+def errorList = [] //Это пустой список (List/ArrayList)
+
+//Определим Тип документа из entityMetadata - сохранена в Service Task "Запрос атрибутов документа"
+def entityMetadata = execution.getVariable('entityMetadata')
+// С каким типом данных вы работаете (объект SPIN или обычный Map/String), можно добавить вывод класса:
+//log.info("PROCESS [{}]: entityMetadata: {} Class: {}", processInstanceId, entityMetadata, entityMetadata?.getClass())
+
+// Попробуем короткий способ определения docType
+// Сначала один раз превращаем весь JSON в Map
+def metaMap = entityMetadata.mapTo(java.util.Map.class)
+// Извлекаем значение по цепочке (вернет "" если чего-то нет)
+def docType = metaMap?.attributes?.ABB0600_REQUEST_TYPE?.code ?: ""
+log.info("PROCESS [{}]: docType: {}", processInstanceId, docType)
+
+def requestUserMap = [:]
+def setupStageDataMap = [:]
+def stageDataMap = [:]
+def fullPath = ""
+
+//Общие Local переменные для вызова метода значений Справочника
+execution.setVariableLocal("serviceName", "dictionaries")
+execution.setVariableLocal("method", "GET")
+execution.setVariableLocal("resultVarName", "resultData") //В resultData попадет результат вызова метода
+
+//Найдем настройки Исполнителей для этапа текущего Типа документа
+//Пока по упрощенной схеме из справочника LDB0600_REQUEST_USERS (берем все записи!)
+fullPath = "/private/dictionaries/LDB0600_REQUEST_USERS/values?onlyData=true&amp;all=true"
+execution.setVariableLocal("path", fullPath)
+try {
+  restClient.execute(execution)
+  requestUserMap = S(execution.getVariable("resultData")).mapTo(java.util.Map.class)
+  log.info("PROCESS [{}] requestUserMap: {}", processInstanceId, requestUserMap)
+} catch (Exception e) {
+  requestUserMap = null
+  log.info("PROCESS [{}] Error call fullPath: {}", processInstanceId, fullPath)
+}
+
+//Понадобятся Имена этапов и Тип назначения и Тип исполнителя из LDB0600_SETUP_STAGES
+fullPath = "/private/dictionaries/LDB0600_SETUP_STAGES/values?onlyData=true&amp;all=true"
+execution.setVariableLocal("path", fullPath)
+try {
+  restClient.execute(execution)
+  setupStageDataMap = S(execution.getVariable("resultData")).mapTo(java.util.Map.class)
+  log.info("PROCESS [{}] setupStageDataMap: {}", processInstanceId, setupStageDataMap)
+} catch (Exception e) {
+  setupStageDataMap = null
+  log.info("PROCESS [{}] Error call fullPath: {}", processInstanceId, fullPath)
+}
+
+//Понадобятся ВСЕ значения Этапов из Справочника LDB0600_STAGES и сохраняем в stageDataMap
+fullPath = "/private/dictionaries/LDB0600_STAGES/values?onlyData=true&amp;all=true"
+execution.setVariableLocal("path", fullPath)
+try {
+  restClient.execute(execution)
+  stageDataMap = S(execution.getVariable("resultData")).mapTo(java.util.Map.class)
+  log.info("PROCESS [{}] stageDataMap: {}", processInstanceId, stageDataMap)
+} catch (Exception e) {
+  stageDataMap = null
+  log.info("PROCESS [{}] Error call fullPath: {}", processInstanceId, fullPath)
+}
+
+//Используем List (java.util.ArrayList) для stageCode с упорядочивание выполнения уровней
+def stageSequence = ["EXPERT1","VIZIR1","COMMITTEE","REPORTING","EXPERT2"]
+
+//Сохраним настройки этапов setupStages - это Map, которая сохраняет порядок добавления элементов (как и ассоциативный массив в PHP)
+def setupStages = [:] //Инициализируем пустую LinkedHashMap
+
+//Одновременно заполним Статическую таблицу INITIAL_EXECUTION_LIST
+// Инициализируем пустой ArrayList для заполнения INITIAL_EXECUTION_LIST
+def initialList = []
+
+stageSequence.each { stageCode -&gt;
+  //Найдем значения setupStageDataMap.data (name, user_type, assignment_type) из справочника LDB0600_SETUP_STAGES для текущего stageCode
+  // В setupStageValue попадет первый найденный объект целиком или null, если совпадений нет.
+  def setupStageValue = setupStageDataMap.data.find { it.code == stageCode }
+  log.info("PROCESS [{}] setupStageValue: {}", processInstanceId, setupStageValue)
+
+  //Найдем значения stageDataMap.data для этапа из справочника LDB0600_STAGES для текущего stageCode
+  //Понадобится для формирования INITIAL_EXECUTION_LIST
+  def stageValue = stageDataMap.data.find { it.code == stageCode }
+  log.info("PROCESS [{}] stageValue: {}", processInstanceId, stageValue)
+
+  //Создаем List для хранения Исполнителей этого этапа (если они есть)
+  def participants = []
+
+  //Ищем всех Исполнителей на этапе
+  requestUserMap?.data?.findAll { it.request_code == docType &amp;&amp;  it.stage_code == stageCode}?.each { value -&gt;
+    def userId = value.user_id //Login
+    def userFullName = ""
+    
+    //Определяем "ФИО (Должность)" для Исполнителя (рекомендация Ильи Першина, см. чат "Аналитика" от 02.02.2026)
+    fullPath = "/private/users/${userId}/employee"
+    execution.setVariableLocal("path", fullPath)
+    execution.setVariableLocal("serviceName", "users")
+    execution.setVariableLocal("resultVarName", "userInfo") 
+    
+    try {
+      restClient.execute(execution)
+      //Внутри цикла можно определять def userData (так ИИ утверждает!)
+      def userData = S(execution.getVariable("userInfo")).prop("data").mapTo(java.util.Map.class)
+      log.info("PROCESS [{}] fullPath: {} userData: {} Class: {}", processInstanceId, fullPath, userData, userData?.getClass())
+
+      // Извлекаем глубокую вложенность: data -&gt; employee -&gt; person -&gt; fullName
+      def person = userData.employee?.person
+      def position = userData.employee?.position ?: ""
+      def dept = userData.employee?.department
+      def pId = userData.employee?.personId
+
+      //Убираем сдвоенные пробелы, если будут!
+      userFullName = "${person?.fullName ?: ""} (${position ?: ""} ${dept?.fullName ?: ""})".trim().replaceAll(" +", " ")
+      log.info("PROCESS [{}] userFullName: {}", processInstanceId, userFullName)
+
+    } catch (Exception e) {
+      log.error("PROCESS [{}] Error {}", processInstanceId, e.message)
+      log.info("PROCESS [{}] Current fullPath: {}", processInstanceId, fullPath)
+    }
+    
+    //Формируем объект настроек для КОНКРЕТНОГО пользователя
+    def userSettings = 
+               [stageName:      setupStageValue.name //Например: "Скрининг"
+               ,assignmentType: setupStageValue.assignment_type //Например: "PERSONAL"
+               ,userType:       setupStageValue.user_type //Например: "USER"
+               ,userId:         userId //Login
+               ,userName:       userFullName //ФИО (Должность)
+               ]
+    log.info("PROCESS [{}] stageCode: '{}' userSettings: {}", processInstanceId, stageCode, userSettings)
+    
+    // Добавляем пользователя в List участников этапа
+    participants &lt;&lt; userSettings
+    
+
+    //Формируем "строку" в нужном формате для INITIAL_EXECUTION_LIST
+    def row = ["ABB0600_STAGE": "${stageValue?.name} (${stageCode})"
+              ,"ABB0600_EXECUTOR": userFullName
+              ]
+    //Добавляем сформированный объект в общий List initialList
+    initialList &lt;&lt; row
+  }
+  
+  // Сохраняем List участников в итоговую Map по Коду этапа
+  // Даже если участников 0, в карте будет пустой List [], но порядок сохранится
+  if (participants) {
+    // Если участники найдены, сохраняем весь список объектов userSettings
+    setupStages[stageCode] = participants
+    log.info("PROCESS [{}] Stage '{}' added with {} participants", processInstanceId, stageCode, participants.size())
+  
+  } else {
+    // Если участников НЕТ, создаем запись с настройкой этапа, но без конкретных Исполнителей
+    // Это позволит избежать NullPointerException позже при чтении stageName
+    setupStages[stageCode] = [
+       [stageName:      setupStageValue?.name ?: "Unknown"
+       ,assignmentType: setupStageValue?.assignment_type ?: "NONE"
+       ,userType:       setupStageValue?.user_type ?: "NONE"
+       ,userId:         ""
+       ,userName:       ""
+       ]
+    ]
+    log.warn("PROCESS [{}] Stage '{}' without participants", processInstanceId, stageCode)
+  }
+
+}
+log.info("PROCESS [{}] docType: '{}' setupStages: {}", processInstanceId, docType, setupStages)
+
+//***Блок контроля наличия исполнителей на всех этапах *********
+setupStages.each { stageCode, rows -&gt;
+  rows.each { stageConfig -&gt;
+    //Проверяем типы, требующие конкретного пользователя
+    if (['USER', 'USER_LIST'].contains(stageConfig.assignmentType)) {
+      //Проверка на null, пустоту или строку "null" (частая проблема фронта)
+      if (!stageConfig.userId || stageConfig.userId.toString().trim() == "") {
+        //Используем stageName или stageCode для идентификации
+        errorList.add("Не назначен исполнитель на этапе: ${stageConfig.stageName ?: stageCode}.")
+      }
+    }
+  }
+}
+
+if (!errorList.isEmpty()) {
+  errorMessage = "Обнаружены следующие ошибки:\n" + errorList.join('\n')
+  log.info("PROCESS [{}] Errors found! errorMessage: {}", processInstanceId, errorMessage)
+  throw new BpmnError("ERROR", errorMessage)
+}
+//***End Блок контроля наличия исполнителей на всех этапах *****
+
+// Сохраняем в setupStages для использования в процессе
+execution.setVariable("setupStages", setupStages)
+
+// Оборачиваем список в финальный JSON-объект, который ожидает атрибут документа
+// Ключ "INITIAL_EXECUTION_LIST" должен соответствовать имени атрибута в схеме данных
+def attributesMap = ["INITIAL_EXECUTION_LIST": initialList]
+log.info("PROCESS [{}] attributesMap: {}", processInstanceId, attributesMap)
+
+/****************************/
+//Откажусь от использования отдельной Service Task "Обновление Статической таблицы"
+//Выполню запуск обновления прямо в скрипте
+//Зададим Local переменные для вызова метода PUT private/documents/{guid}/_attributes
+execution.setVariableLocal("serviceName", "documents")
+execution.setVariableLocal("method", "PUT")
+fullPath = "private/documents/${entityGuid}/_attributes"
+execution.setVariableLocal("path", fullPath)
+
+//execution.setVariableLocal("body", attributesMap) //Портит данные!
+
+//Для определения body буду использовать Вариант 3 (см. ниже)
+//Возможно, эти "танцы с бубуном" излишни, пусть эксперты подскажут более верный способ!
+def rawJsonString = JsonOutput.toJson(attributesMap)
+execution.setVariableLocal("body", JSON(rawJsonString).toString())
+
+try {
+  log.info("PROCESS [{}] Обновление Статической таблицы fullPath: {} attributesMap: {}", processInstanceId, fullPath, attributesMap)
+  restClient.execute(execution)
+
+} catch (Exception e) {
+  log.info("PROCESS [{}] Error call fullPath: {} attributesMap: {}", processInstanceId, fullPath, attributesMap)
+  log.error("PROCESS [{}] e.message: {}", processInstanceId, e.message)
+  
+  errorMessage = "Не удалось обновить Статическую таблицу"
+  throw new BpmnError("ERROR", errorMessage)
+} 
+/****************************/
+
+//***Блок контроля Шага заполнения формы (ABB0600_STEP_FORM)******
+//def stepForm = entityMetadata.prop("attributes").hasProp("ABB0600_STEP_FORM") ? entityMetadata.prop("attributes").prop("ABB0600_STEP_FORM").stringValue() : ""
+def attributes = entityMetadata.prop("attributes")
+def stepForm = (attributes.hasProp("ABB0600_STEP_FORM") &amp;&amp; !attributes.prop("ABB0600_STEP_FORM").isNull()) ? 
+               attributes.prop("ABB0600_STEP_FORM").stringValue() : ""
+if (stepForm == 'Ввод данных' || stepForm == '') {
+  stepForm = 'Контроль данных'
+  throw new BpmnError("UPDATE_STEP", stepForm)
+}
+//***End Блок контроля Шага заполнения формы (ABB0600_STEP_FORM)***
+
+//Вариант 1: Если вам нужна обычная строка (String)
+//Создаем чистую JSON-строку и Сохраняем как обычный текст (java.lang.String)
+//def jsonString = JsonOutput.toJson(attributesMap)
+//log.info("PROCESS [{}] jsonString: {}", processInstanceId, jsonString)
+//execution.setVariable("attributesMap", jsonString) 
+//Если jsonString будет длинее 4000 символов, возникнет ошибка Value too long (превысит лимит колонки TEXT_ в таблице ACT_RU_VARIABLE)
+
+//Вариант 2: Если вы хотите использовать преимущества Spin
+//Spin сам умеет превращать Map в JSON, JsonOutput не нужен
+//execution.setVariable("attributesMap", S(attributesMap))
+//ВАЖНО!!! При отправке в Delegate expression Body (в скрипте или выражении): ${attributesMap.toString()}
+//Но возникает ERROR: SPIN-01001 Unsupported input of type 'java.util.LinkedHashMap'
+
+//Вариант 3: -----------------------------------------
+//Используйте метод JSON(...) вместо универсального S(...). Это заставит Spin работать со строкой как с сырым JSON-текстом.
+//Превращаем Map в строгий JSON-текст (String) через Groovy
+//Это уберет все LinkedHashMap и заменит их на текст
+//def rawJsonString = JsonOutput.toJson(attributesMap)
+
+//Сохраняем в переменную типа JSON (Spin), используя метод JSON()
+//Это гарантирует запись в Bytearray (без лимита 4000)
+//ВАЖНО!!! При отправке в Delegate expression Body (в скрипте или выражении): ${attributesMap.toString()}
+//execution.setVariable("attributesMap", JSON(rawJsonString))
+//End Вариант 3: -------------------------------------
+</bpmn:script>
+    </bpmn:scriptTask>
+    <bpmn:intermediateThrowEvent id="Event_1n6cdv3" name="на Обработку ошибки">
+      <bpmn:incoming>Flow_16y5q5d</bpmn:incoming>
+      <bpmn:linkEventDefinition id="LinkEventDefinition_1yfnk8x" name="linkError" />
+    </bpmn:intermediateThrowEvent>
+    <bpmn:intermediateThrowEvent id="Event_0g8peea" name="на Обработку ошибки">
+      <bpmn:incoming>Flow_16n2gjd</bpmn:incoming>
+      <bpmn:linkEventDefinition id="LinkEventDefinition_0l2kgv8" name="linkError" />
+    </bpmn:intermediateThrowEvent>
+    <bpmn:intermediateThrowEvent id="Event_0nymuaf" name="на Обновление Шага формы">
+      <bpmn:incoming>Flow_1kl5lv6</bpmn:incoming>
+      <bpmn:linkEventDefinition id="LinkEventDefinition_1kmxjc8" name="linkUpdateStep" />
+    </bpmn:intermediateThrowEvent>
+    <bpmn:boundaryEvent id="Event_1if494a" name="ERROR" attachedToRef="dataControl">
+      <bpmn:outgoing>Flow_16y5q5d</bpmn:outgoing>
+      <bpmn:errorEventDefinition id="ErrorEventDefinition_09pbg0t" errorRef="Error_0aexqe7" camunda:errorCodeVariable="ERROR" camunda:errorMessageVariable="errorMessage" />
+    </bpmn:boundaryEvent>
+    <bpmn:boundaryEvent id="Event_1six651" name="UPDATE STEP" attachedToRef="filingInitialExecutionList">
+      <bpmn:outgoing>Flow_1kl5lv6</bpmn:outgoing>
+      <bpmn:errorEventDefinition id="ErrorEventDefinition_0ihb3vz" errorRef="Error_1fgx0iq" camunda:errorCodeVariable="UPDATE_STEP" camunda:errorMessageVariable="stepForm" />
+    </bpmn:boundaryEvent>
+    <bpmn:boundaryEvent id="Event_01c1kse" attachedToRef="filingInitialExecutionList">
+      <bpmn:outgoing>Flow_16n2gjd</bpmn:outgoing>
+      <bpmn:errorEventDefinition id="ErrorEventDefinition_1d7ugkl" errorRef="Error_0cyvybn" camunda:errorCodeVariable="ERROR" camunda:errorMessageVariable="errorMessage" />
+    </bpmn:boundaryEvent>
+    <bpmn:sequenceFlow id="Flow_0491rza" sourceRef="getRequestUsersService" targetRef="dataControl" />
+    <bpmn:sequenceFlow id="Flow_0noqp32" sourceRef="dataControl" targetRef="filingInitialExecutionList" />
+    <bpmn:sequenceFlow id="Flow_16y5q5d" sourceRef="Event_1if494a" targetRef="Event_1n6cdv3" />
+    <bpmn:sequenceFlow id="Flow_16n2gjd" sourceRef="Event_01c1kse" targetRef="Event_0g8peea" />
+    <bpmn:sequenceFlow id="Flow_1kl5lv6" sourceRef="Event_1six651" targetRef="Event_0nymuaf" />
+    <bpmn:sequenceFlow id="Flow_1n2o28n" sourceRef="setDocumentAttributes" targetRef="getRequestUsersService" />
+    <bpmn:exclusiveGateway id="Gateway_0azwmrj">
+      <bpmn:incoming>Flow_0jryjlz</bpmn:incoming>
+      <bpmn:outgoing>Flow_03lffiq</bpmn:outgoing>
+      <bpmn:outgoing>Flow_1x6euyt</bpmn:outgoing>
+      <bpmn:outgoing>Flow_0ugapy4</bpmn:outgoing>
+    </bpmn:exclusiveGateway>
+    <bpmn:intermediateThrowEvent id="Event_1kq9mri" name="на Доработку">
+      <bpmn:incoming>Flow_03lffiq</bpmn:incoming>
+      <bpmn:linkEventDefinition id="LinkEventDefinition_1nxh507" name="linkRevise" />
+    </bpmn:intermediateThrowEvent>
+    <bpmn:intermediateThrowEvent id="Event_122ibhp" name="Отклонить">
+      <bpmn:incoming>Flow_1x6euyt</bpmn:incoming>
+      <bpmn:linkEventDefinition id="LinkEventDefinition_0scewk1" name="linkDecline" />
+    </bpmn:intermediateThrowEvent>
+    <bpmn:sequenceFlow id="Flow_03lffiq" sourceRef="Gateway_0azwmrj" targetRef="Event_1kq9mri">
+      <bpmn:conditionExpression xsi:type="bpmn:tFormalExpression">${taskOutcome == 'TAB0600_REVISE'}</bpmn:conditionExpression>
+    </bpmn:sequenceFlow>
+    <bpmn:sequenceFlow id="Flow_1x6euyt" sourceRef="Gateway_0azwmrj" targetRef="Event_122ibhp">
+      <bpmn:conditionExpression xsi:type="bpmn:tFormalExpression">${taskOutcome == 'TAB0600_DECLINE'}</bpmn:conditionExpression>
+    </bpmn:sequenceFlow>
+    <bpmn:endEvent id="Event_163qihc">
+      <bpmn:incoming>Flow_0ugapy4</bpmn:incoming>
+    </bpmn:endEvent>
+    <bpmn:sequenceFlow id="Flow_0ugapy4" sourceRef="Gateway_0azwmrj" targetRef="Event_163qihc" />
+    <bpmn:userTask id="FIN_FUNC_EXPERT" name="Финансовая экспертиза функции (FIN_FUNC_EXPERT)" camunda:asyncBefore="true" camunda:assignee="${personalUser}" camunda:dueDate="#{extensions.timeService.addCalendarDaysTillEndOfDay(3)}">
+      <bpmn:documentation>Связанный документ</bpmn:documentation>
+      <bpmn:extensionElements>
+        <camunda:inputOutput>
+          <camunda:inputParameter name="actions">TAB0600_ACCEPT,TAB0600_REVISE,TAB0600_DECLINE</camunda:inputParameter>
+        </camunda:inputOutput>
+        <camunda:taskListener delegateExpression="#{userTaskNotificationListener}" event="create" id="notificationListener">
+          <camunda:field name="messageCode">
+            <camunda:string>NTB0600_TASK_ASSIGNED</camunda:string>
+          </camunda:field>
+        </camunda:taskListener>
+        <camunda:executionListener event="start">
+          <camunda:script scriptFormat="groovy" />
+        </camunda:executionListener>
+        <camunda:executionListener event="end">
+          <camunda:script scriptFormat="groovy">//Получаем текущие значения
+def currentTaskId = execution.getVariable("currentTaskId")
+def pid = execution.processInstanceId
+
+//Определяем логгер
+def logName = ""${processCode}_User_Task ${currentTaskId}"
+def log = org.slf4j.LoggerFactory.getLogger(logName)
+log.info("PROCESS [{}]: ---End Execution Listeners (end)---", pid)</camunda:script>
+        </camunda:executionListener>
+      </bpmn:extensionElements>
+      <bpmn:incoming>Flow_16dpqms</bpmn:incoming>
+      <bpmn:outgoing>Flow_0jryjlz</bpmn:outgoing>
+    </bpmn:userTask>
+    <bpmn:intermediateThrowEvent id="Event_1qcrkhv" name="на Обработку ошибки">
+      <bpmn:incoming>Flow_0phnkh3</bpmn:incoming>
+      <bpmn:linkEventDefinition id="LinkEventDefinition_13ogx04" name="linkError" />
+    </bpmn:intermediateThrowEvent>
+    <bpmn:scriptTask id="preStepFinFuncExpert" name="PRE STEP FIN_FUNC_EXPERT" scriptFormat="groovy">
+      <bpmn:documentation>Действия перед назначением User Task</bpmn:documentation>
+      <bpmn:incoming>Flow_0d8hnpd</bpmn:incoming>
+      <bpmn:outgoing>Flow_16dpqms</bpmn:outgoing>
+      <bpmn:script>/************************************************************ 
+0600 Pre Step User Task - установка значения statusCode 
+и определение Исполнителей перед выполнением User Task.
+Groovy в Script Task перед User Task.
+1.ВАЖНО!!! Ставится НЕПОСРЕДСТВЕННО перед User Task!!!!!!!!!!
+************************************************************/
+// JsonSlurper используется внутри Groovy-скриптов для парсинга JSON-строк в объекты Groovy (Map или List)
+import groovy.json.JsonSlurper
+
+// JsonBuilder - для преобразования объектов Groovy (Map, List, POGO) в строку формата JSON
+//import groovy.json.JsonBuilder //Это «конструктор»
+
+//Библиотека для преобразования объектов Groovy (Map, List) в формат JSON-строки
+import groovy.json.JsonOutput //Это «молоток» для готовых данных
+
+import static org.camunda.spin.Spin.*
+
+//Для обработки throw new BpmnError (если есть)
+import org.camunda.bpm.engine.delegate.BpmnError
+
+//Ищем значение currentTaskId и другие атрибуты -----------------------
+def currentTaskId = 'UNDEFINED'
+def currentTaskName = 'UNDEFINED'
+boolean isMultiInstance = false //User Task Multi-instance
+boolean isSequential = null //Признак Последовательное выполнение (true) или Параллельное (false)
+
+// Получаем текущий элемент (сам Script Task), на котором сейчас стоит токен
+def currentFlowElement = execution.getBpmnModelElementInstance()
+// Берем первую исходящий Flow от этого Script Task
+def outgoingFlow = currentFlowElement.getOutgoing().find()
+
+if (outgoingFlow != null) {
+  // Получаем объект, на который указывает эта линия (Target)
+  def targetElement = outgoingFlow.getTarget()
+
+  // Проверяем, является ли цель User Task
+  if (targetElement instanceof org.camunda.bpm.model.bpmn.instance.UserTask) {
+    currentTaskId = targetElement.getId()
+    currentTaskName = targetElement.getName() ?: 'No Name'
+    
+    // Ищем расширение Loop Characteristics (именно оно отвечает за Multi-instance)
+    def loopCharacteristics = targetElement.getLoopCharacteristics()
+    
+    // Получаем характеристики цикла для User Task (именно оно отвечает за Multi-instance)
+    isMultiInstance = loopCharacteristics != null
+    
+    //Для Multi-instance Task определяем тип выполнения Последовательный (true) или Параллельный (false)
+    isSequential = isMultiInstance &amp;&amp; loopCharacteristics.isSequential()
+
+  }
+}
+//End Ищем значение currentTaskId -----------------------------------------
+execution.setVariable("currentTaskId", currentTaskId)
+execution.setVariable("currentTaskName", currentTaskName) //На всякий случай
+execution.setVariableLocal("isMultiInstance", isMultiInstance)
+execution.setVariableLocal("isSequential", isSequential)
+
+//Определяем логгер
+def log = org.slf4j.LoggerFactory.getLogger("${processCode}_Pre_Step ${currentTaskId}")
+def pid = execution.processInstanceId
+log.info("PROCESS [{}] ---Start--", pid)
+
+def errorMessage = "" //Изначально ошибки нет.
+
+//Задаем значение Статуса (statusCode)
+def statusCode = "DSB0600_${currentTaskId}"
+if (currentTaskId == 'UNDEFINED') {
+  errorMessage = "Не удалось найте значение currentTaskId"
+  throw new BpmnError("ERROR", errorMessage)
+}
+
+//Зададим Local переменные для вызова метода PUT /private/documents/{guid}/_status
+execution.setVariableLocal("serviceName", "documents")
+execution.setVariableLocal("method", "PUT")
+def fullPath = "private/documents/${entityGuid}/_status"
+execution.setVariableLocal("path", fullPath)
+
+def attributesMap = ["statusCode": statusCode]
+log.info("PROCESS [{}] attributesMap: {}", pid, attributesMap)
+//execution.setVariableLocal("body", attributesMap) //Портит данные!
+
+//Для определения body буду использовать Вариант из скрипта filingInitialExecutionList
+//Возможно, эти "танцы с бубуном" излишни, пусть эксперты подскажут более верный способ!
+def rawJsonString = JsonOutput.toJson(attributesMap)
+execution.setVariableLocal("body", JSON(rawJsonString).toString())
+
+try {
+  log.info("PROCESS [{}] Обновление Статуса fullPath: {} attributesMap: {}", pid, fullPath, attributesMap)
+  restClient.execute(execution)
+
+} catch (Exception e) {
+  log.info("PROCESS [{}] Error call fullPath: {} attributesMap: {}", pid, fullPath, attributesMap)
+  log.error("PROCESS [{}] e.message: {}", pid, e.message)
+  
+  errorMessage = "Не удалось обновить Статус"
+  throw new BpmnError("ERROR", errorMessage)
+} 
+
+//После обновления надо бы получить значение statusTitle из настройки "Статусы документов",
+//поскольку это значение используется в Уведомлении. Но как  это сделать пока не знаю!
+//execution.setVariableLocal("statusTitle", statusTitle)
+
+//Либо обновить значение entityMetadata, но для этого надо повторно запросить атрибуты документа
+execution.setVariableLocal("serviceName", "documents")
+execution.setVariableLocal("method", "GET")
+fullPath = "private/documents/${entityGuid}"
+execution.setVariableLocal("path", fullPath)
+execution.setVariableLocal("resultVarName", "baseDocument") //возвращаемое значение
+
+//На всякий случай:
+//execution.setVariableLocal("pathParams", [:])
+//execution.setVariableLocal("body", null)
+
+log.info("PROCESS [{}] fullPath: {}", pid, fullPath)
+
+try {
+  restClient.execute(execution)
+  log.info("PROCESS [{}] Обновление атрибутов Документа  baseDocument: {}", pid, baseDocument)
+  execution.setVariable('baseDocument', baseDocument); //baseDocument - возращаемое значение
+  //Обновляем entityMetadata
+  def entityMetadata = S(baseDocument).prop('data')
+  execution.setVariable('entityMetadata', entityMetadata);
+  log.info("PROCESS [{}] Обновление атрибутов Документа entityMetadata: {}", pid, entityMetadata)
+
+} catch (Exception e) {
+  log.info("PROCESS [{}] Error call fullPath: {}", pid, fullPath)
+  log.error("PROCESS [{}] e.message: {}", pid, e.message)
+  
+  errorMessage = "Не удалось получит атрибуты Документа"
+  throw new BpmnError("ERROR", errorMessage)
+} 
+
+//--- Проверка настройки User Task в Modeler --------------------------
+if (isMultiInstance &amp;&amp; !isSequential) {
+    log.info("PROCESS [{}] Task: {} - PARALLEL Multi-instance", pid, currentTaskName)
+} else if (isMultiInstance &amp;&amp; isSequential) {
+    log.info("PROCESS [{}] Task: {} - SEQUENTIAL Multi-instance", pid, currentTaskName)
+} else {
+    log.info("PROCESS [{}] Task: {} - Standard Single", pid, currentTaskName)
+}
+//-- End Проверка настройки User Task в Modeler -----------------------
+
+//Блок определения Исполнителей для currentTaskId ---------------------
+//Находим текущего исполнителя (-лей) из setupStages для значени currentTaskId
+def setupStages = execution.getVariable("setupStages") ?: [:]
+log.info("PROCESS [{}] setupStages: {}", pid, setupStages)
+
+def currentSetup = setupStages.get(currentTaskId) //setupStages[currentTaskId] - текущий этап
+
+if (currentSetup &amp;&amp; !currentSetup.isEmpty()) {
+    
+  // Извлекаем ПЕРВОЕ значение assignmentType и userType (Тип исполнения)
+  def firstEntry = currentSetup[0]
+  def assignmentType = firstEntry.assignmentType
+  def userType = firstEntry.userType
+  def resultLog = ""
+
+  if (1==2) {
+    // Только для ТЕСТИРОВАНИЯ!!!!
+    errorMessage = "Test ERROR for stage: ${currentTaskId}"
+
+    //Вариант А: Создать инцидент (остановка процесса)
+    //throw new Exception(errorMessage)
+
+    //Вариант Б: Обработать на схеме (если есть Boundary Event)
+    throw new BpmnError("ERROR", errorMessage)
+    
+  }
+
+  //Блок поиска Исполнителей с возможностью Rollback
+  try {
+    if (1==2) {
+      // Только для ТЕСТИРОВАНИЯ!!!!
+      errorMessage = "Test ERROR for stage: ${currentTaskId}"
+      // Выбрасываем ошибку, которую поймает наш catch ниже
+      throw new Exception(errorMessage)
+
+    } else if (userType == 'PERSONAL' &amp;&amp; !isMultiInstance) {
+      if (assignmentType == 'USER') {
+        //Назначение только на одного исполнителя (personalUser)
+        execution.setVariable("personalUser", firstEntry.userId)
+        log.info("PROCESS [{}] Установлен исполнитель: {}", pid, firstEntry.userId)
+
+      } else if (assignmentType == 'USER_LIST') {
+        //Назначение на candidateUsersList, перечень через запятую всех Кандидатов
+        //Извлекаем ВСЕ userId в один список. В Groovy это делается через оператор разворота *.
+        //def userIds = currentSetup*.userId //Объект java.util.ArrayList
+        // Пример: ["ipanchenko", "sibaranov", "rkopytov"]
+
+        // Безопасно собираем только непустые ID в строку через запятую
+        def validUserIds = currentSetup*.userId.findAll { it &amp;&amp; !it.toString().trim().isEmpty() }
+        
+        if (validUserIds.isEmpty()) {
+          errorMessage = "No valid candidate users found for stage: " + currentTaskId
+          // Выбрасываем ошибку, которую поймает наш catch ниже
+          throw new Exception(errorMessage)
+        }
+
+        // Назначение всех пользователей как кандидатов в задачу
+        //ВАЖНО! Поэтому для списка всегда используйте Candidate Users
+        //Переменная candidateUsersList должна быть указана в поле "Candidate Users" в Modeler.
+        execution.setVariable("candidateUsersList", validUserIds.join(",")) // Для поля Candidate Users нужна строка через запятую
+        log.info("PROCESS [{}] Установлены кандидаты: {}", pid, validUserIds)
+      
+      } else {
+        errorMessage = "Unknown assignmentType: '${assignmentType}'for stage: " + currentTaskId
+        // Выбрасываем ошибку, которую поймает наш catch ниже
+        throw new Exception(errorMessage)
+      }
+      
+    } else if (userType == 'PARALLEL' &amp;&amp; isMultiInstance &amp;&amp; !isSequential) {
+      //Используем только для isMultiInstance==true и isSequential==false (параллельное выполнение)
+      //Извлекаем ВСЕ userId в один список
+      def userIds = currentSetup*.userId
+      
+      // Дополнительная проверка внутри списка
+      if (userIds.any { it == null || it.toString().trim().isEmpty() }) {
+        // Формируем текст для исключения
+        errorMessage = "Parallel collection contains null or empty user IDs for stage: ${currentTaskId}"
+        // Выбрасываем ошибку, которую поймает наш catch ниже
+        throw new Exception(errorMessage)
+      }
+
+      // Переменная assigneeList должна быть указана в поле "Collection" в Modeler. 
+      // Важно! Именно assigneeList (без ${})
+      execution.setVariable("assigneeList", userIds)
+      log.info("PROCESS [{}] Подготовлена коллекция для Multi-Instance: {}", pid, userIds)
+    
+    } else {
+      errorMessage = "No assignment defined for stage: ${currentTaskId}"
+      // Выбрасываем ошибку, которую поймает наш catch ниже
+      throw new Exception(errorMessage)
+    }
+
+  } catch (Exception e) {
+      // Логируем подробности в файл лога сервера (будет видно админу)
+      log.error("PROCESS [{}]: CRITICAL ERROR: {}", pid, e.getMessage())
+      log.error("PROCESS [{}]: Debug data for currentTaskId: {} currentSetup: {}", pid, currentTaskId, currentSetup)
+      
+      //Вариант от AI:
+      // "Уронить" транзакцию, чтобы произошел Rollback к предыдущей задаче
+      // Именно текст из RuntimeException часто пробрасывается в UI (Tasklist)
+      //throw new RuntimeException(e.getMessage())
+      
+      //Мой вариант:
+      throw new BpmnError("ERROR", errorMessage)
+      //И на User Task добавляем Error Boundary Event
+  }
+}
+//End Блок определения Исполнителей для currentTaskId -----------------
+
+log.info("PROCESS [{}] ---End--", pid)
+</bpmn:script>
+    </bpmn:scriptTask>
+    <bpmn:intermediateThrowEvent id="Event_1442r1l" name="на Обработку ошибки">
+      <bpmn:incoming>Flow_0tswemp</bpmn:incoming>
+      <bpmn:linkEventDefinition id="LinkEventDefinition_0xonsca" name="linkError" />
+    </bpmn:intermediateThrowEvent>
+    <bpmn:boundaryEvent id="Event_0s21oe0" name="ERROR" attachedToRef="FIN_FUNC_EXPERT">
+      <bpmn:outgoing>Flow_0phnkh3</bpmn:outgoing>
+      <bpmn:errorEventDefinition id="ErrorEventDefinition_1q28yxh" errorRef="Error_0aexqe7" camunda:errorCodeVariable="ERROR" camunda:errorMessageVariable="errorMessage" />
+    </bpmn:boundaryEvent>
+    <bpmn:boundaryEvent id="Event_1e2e9fg" name="ERROR" attachedToRef="preStepFinFuncExpert">
+      <bpmn:outgoing>Flow_0tswemp</bpmn:outgoing>
+      <bpmn:errorEventDefinition id="ErrorEventDefinition_1nxp517" errorRef="Error_0aexqe7" camunda:errorCodeVariable="ERROR" camunda:errorMessageVariable="errorMessage" />
+    </bpmn:boundaryEvent>
+    <bpmn:sequenceFlow id="Flow_16dpqms" sourceRef="preStepFinFuncExpert" targetRef="FIN_FUNC_EXPERT" />
+    <bpmn:sequenceFlow id="Flow_0phnkh3" sourceRef="Event_0s21oe0" targetRef="Event_1qcrkhv" />
+    <bpmn:sequenceFlow id="Flow_0tswemp" sourceRef="Event_1e2e9fg" targetRef="Event_1442r1l" />
+    <bpmn:sequenceFlow id="Flow_0jryjlz" sourceRef="FIN_FUNC_EXPERT" targetRef="Gateway_0azwmrj" />
+    <bpmn:sequenceFlow id="Flow_0d8hnpd" sourceRef="filingInitialExecutionList" targetRef="preStepFinFuncExpert" />
+  </bpmn:process>
+  <bpmn:escalation id="Escalation_25pft9f" name="STATUS" escalationCode="STATUS" />
+  <bpmn:error id="Error_0aexqe7" name="ERROR" errorCode="ERROR" camunda:errorMessage="errorMessage" />
+  <bpmn:error id="Error_1fgx0iq" name="UPDATE_STEP" errorCode="UPDATE_STEP" camunda:errorMessage="stepForm" />
+  <bpmn:error id="Error_0cyvybn" name="ERROR" errorCode="ERROR" camunda:errorMessage="errorMessage" />
+  <bpmndi:BPMNDiagram id="BPMNDiagram_1">
+    <bpmndi:BPMNPlane id="BPMNPlane_1" bpmnElement="PIB0600">
+      <bpmndi:BPMNShape id="StartEvent_1_di" bpmnElement="StartEvent_1">
+        <dc:Bounds x="952" y="552" width="36" height="36" />
+        <bpmndi:BPMNLabel>
+          <dc:Bounds x="938" y="595" width="64" height="14" />
+        </bpmndi:BPMNLabel>
+      </bpmndi:BPMNShape>
+      <bpmndi:BPMNShape id="Event_0g4mbbd_di" bpmnElement="catchEventDecline">
+        <dc:Bounds x="162" y="392" width="36" height="36" />
+        <bpmndi:BPMNLabel>
+          <dc:Bounds x="153" y="435" width="55" height="14" />
+        </bpmndi:BPMNLabel>
+      </bpmndi:BPMNShape>
+      <bpmndi:BPMNShape id="Event_1k5ubn3_di" bpmnElement="Event_1xeqdh0">
+        <dc:Bounds x="632" y="392" width="36" height="36" />
+      </bpmndi:BPMNShape>
+      <bpmndi:BPMNShape id="BPMNShape_1mnwrjl" bpmnElement="noticeOfDecline">
+        <dc:Bounds x="500" y="370" width="100" height="80" />
+        <bpmndi:BPMNLabel />
+      </bpmndi:BPMNShape>
+      <bpmndi:BPMNShape id="BPMNShape_1as7oaw" bpmnElement="settingStatusDecline">
+        <dc:Bounds x="230" y="370" width="100" height="80" />
+        <bpmndi:BPMNLabel />
+      </bpmndi:BPMNShape>
+      <bpmndi:BPMNShape id="BPMNShape_0hqr87c" bpmnElement="Activity_0pntbzb">
+        <dc:Bounds x="370" y="370" width="100" height="80" />
+        <bpmndi:BPMNLabel />
+      </bpmndi:BPMNShape>
+      <bpmndi:BPMNShape id="Event_1ciaew0_di" bpmnElement="catchEventError">
+        <dc:Bounds x="162" y="552" width="36" height="36" />
+        <bpmndi:BPMNLabel>
+          <dc:Bounds x="154" y="595" width="56" height="27" />
+        </bpmndi:BPMNLabel>
+      </bpmndi:BPMNShape>
+      <bpmndi:BPMNShape id="Activity_17dpuiv_di" bpmnElement="createErrorMap">
+        <dc:Bounds x="230" y="530" width="100" height="80" />
+        <bpmndi:BPMNLabel />
+      </bpmndi:BPMNShape>
+      <bpmndi:BPMNShape id="BPMNShape_1042tt0" bpmnElement="Activity_006k6ir">
+        <dc:Bounds x="370" y="530" width="100" height="80" />
+        <bpmndi:BPMNLabel />
+      </bpmndi:BPMNShape>
+      <bpmndi:BPMNShape id="BPMNShape_0993g4f" bpmnElement="Activity_1ejr2au">
+        <dc:Bounds x="500" y="530" width="100" height="80" />
+        <bpmndi:BPMNLabel />
+      </bpmndi:BPMNShape>
+      <bpmndi:BPMNShape id="Activity_1fm3yfi_di" bpmnElement="Activity_0dtqxyu" isExpanded="true">
+        <dc:Bounds x="190" y="80" width="430" height="200" />
+        <bpmndi:BPMNLabel />
+      </bpmndi:BPMNShape>
+      <bpmndi:BPMNShape id="BPMNShape_1nivq4x" bpmnElement="Activity_11xhg60">
+        <dc:Bounds x="280" y="140" width="100" height="80" />
+        <bpmndi:BPMNLabel />
+      </bpmndi:BPMNShape>
+      <bpmndi:BPMNShape id="Event_1v35zna_di" bpmnElement="Event_1v35zna">
+        <dc:Bounds x="552" y="162" width="36" height="36" />
+      </bpmndi:BPMNShape>
+      <bpmndi:BPMNShape id="BPMNShape_1kx2o5h" bpmnElement="Activity_0afnqx2">
+        <dc:Bounds x="410" y="140" width="100" height="80" />
+        <bpmndi:BPMNLabel />
+      </bpmndi:BPMNShape>
+      <bpmndi:BPMNShape id="Event_0961i8q_di" bpmnElement="Event_14d61rq">
+        <dc:Bounds x="210" y="162" width="36" height="36" />
+      </bpmndi:BPMNShape>
+      <bpmndi:BPMNEdge id="Flow_0mkcmy6_di" bpmnElement="Flow_0mkcmy6">
+        <di:waypoint x="246" y="180" />
+        <di:waypoint x="280" y="180" />
+      </bpmndi:BPMNEdge>
+      <bpmndi:BPMNEdge id="Flow_0zv2mkg_di" bpmnElement="Flow_0zv2mkg">
+        <di:waypoint x="380" y="180" />
+        <di:waypoint x="410" y="180" />
+      </bpmndi:BPMNEdge>
+      <bpmndi:BPMNEdge id="Flow_0c5dnyh_di" bpmnElement="Flow_0c5dnyh">
+        <di:waypoint x="510" y="180" />
+        <di:waypoint x="552" y="180" />
+      </bpmndi:BPMNEdge>
+      <bpmndi:BPMNShape id="Event_1qydzv6_di" bpmnElement="Event_04zy2x1">
+        <dc:Bounds x="632" y="552" width="36" height="36" />
+        <bpmndi:BPMNLabel>
+          <dc:Bounds x="616" y="595" width="71" height="27" />
+        </bpmndi:BPMNLabel>
+      </bpmndi:BPMNShape>
+      <bpmndi:BPMNShape id="BPMNShape_1b5zi7p" bpmnElement="Event_0ddtg1o">
+        <dc:Bounds x="162" y="682" width="36" height="36" />
+        <bpmndi:BPMNLabel>
+          <dc:Bounds x="151" y="725" width="66" height="27" />
+        </bpmndi:BPMNLabel>
+      </bpmndi:BPMNShape>
+      <bpmndi:BPMNShape id="BPMNShape_12bvw37" bpmnElement="Activity_06j7pgk">
+        <dc:Bounds x="230" y="660" width="100" height="80" />
+        <bpmndi:BPMNLabel />
+      </bpmndi:BPMNShape>
+      <bpmndi:BPMNShape id="BPMNShape_125ri1m" bpmnElement="Activity_14fiknn">
+        <dc:Bounds x="370" y="660" width="100" height="80" />
+        <bpmndi:BPMNLabel />
+      </bpmndi:BPMNShape>
+      <bpmndi:BPMNShape id="BPMNShape_1mjl805" bpmnElement="Activity_1j32zjs">
+        <dc:Bounds x="500" y="660" width="100" height="80" />
+        <bpmndi:BPMNLabel />
+      </bpmndi:BPMNShape>
+      <bpmndi:BPMNShape id="BPMNShape_058wthi" bpmnElement="Event_1u66co7">
+        <dc:Bounds x="632" y="682" width="36" height="36" />
+        <bpmndi:BPMNLabel>
+          <dc:Bounds x="616" y="725" width="71" height="27" />
+        </bpmndi:BPMNLabel>
+      </bpmndi:BPMNShape>
+      <bpmndi:BPMNShape id="BPMNShape_0lkljds" bpmnElement="setDocumentAttributes">
+        <dc:Bounds x="1040" y="530" width="100" height="80" />
+        <bpmndi:BPMNLabel />
+      </bpmndi:BPMNShape>
+      <bpmndi:BPMNShape id="Activity_1gte3d3_di" bpmnElement="REVISE">
+        <dc:Bounds x="1040" y="290" width="100" height="80" />
+        <bpmndi:BPMNLabel />
+      </bpmndi:BPMNShape>
+      <bpmndi:BPMNShape id="Event_1a52uyk_di" bpmnElement="catchEventRevise">
+        <dc:Bounds x="872" y="312" width="36" height="36" />
+        <bpmndi:BPMNLabel>
+          <dc:Bounds x="856" y="355" width="69" height="14" />
+        </bpmndi:BPMNLabel>
+      </bpmndi:BPMNShape>
+      <bpmndi:BPMNShape id="Gateway_0yofwp4_di" bpmnElement="Gateway_0yofwp4" isMarkerVisible="true">
+        <dc:Bounds x="1065" y="425" width="50" height="50" />
+      </bpmndi:BPMNShape>
+      <bpmndi:BPMNShape id="BPMNShape_0kjm9o3" bpmnElement="Event_001d5wo">
+        <dc:Bounds x="1142" y="432" width="36" height="36" />
+        <bpmndi:BPMNLabel>
+          <dc:Bounds x="1133" y="402" width="55" height="14" />
+        </bpmndi:BPMNLabel>
+      </bpmndi:BPMNShape>
+      <bpmndi:BPMNShape id="Event_151c9ls_di" bpmnElement="Event_1a2s7o8">
+        <dc:Bounds x="962" y="312" width="36" height="36" />
+        <bpmndi:BPMNLabel>
+          <dc:Bounds x="947" y="355" width="71" height="27" />
+        </bpmndi:BPMNLabel>
+      </bpmndi:BPMNShape>
+      <bpmndi:BPMNShape id="Activity_0b4cqnd_di" bpmnElement="dataControl">
+        <dc:Bounds x="1330" y="530" width="100" height="80" />
+        <bpmndi:BPMNLabel />
+      </bpmndi:BPMNShape>
+      <bpmndi:BPMNShape id="Activity_191bdcw_di" bpmnElement="getRequestUsersService">
+        <dc:Bounds x="1190" y="530" width="100" height="80" />
+        <bpmndi:BPMNLabel />
+      </bpmndi:BPMNShape>
+      <bpmndi:BPMNShape id="Activity_1sdkmu1_di" bpmnElement="filingInitialExecutionList">
+        <dc:Bounds x="1470" y="530" width="100" height="80" />
+        <bpmndi:BPMNLabel />
+      </bpmndi:BPMNShape>
+      <bpmndi:BPMNShape id="BPMNShape_0h8z23y" bpmnElement="Event_1n6cdv3">
+        <dc:Bounds x="1382" y="672" width="36" height="36" />
+        <bpmndi:BPMNLabel>
+          <dc:Bounds x="1367" y="715" width="71" height="27" />
+        </bpmndi:BPMNLabel>
+      </bpmndi:BPMNShape>
+      <bpmndi:BPMNShape id="Event_1yhabo8_di" bpmnElement="Event_0g8peea">
+        <dc:Bounds x="1552" y="672" width="36" height="36" />
+        <bpmndi:BPMNLabel>
+          <dc:Bounds x="1535" y="715" width="71" height="27" />
+        </bpmndi:BPMNLabel>
+      </bpmndi:BPMNShape>
+      <bpmndi:BPMNShape id="BPMNShape_0z1z3ih" bpmnElement="Event_0nymuaf">
+        <dc:Bounds x="1472" y="672" width="36" height="36" />
+        <bpmndi:BPMNLabel>
+          <dc:Bounds x="1450" y="718" width="80" height="27" />
+        </bpmndi:BPMNLabel>
+      </bpmndi:BPMNShape>
+      <bpmndi:BPMNShape id="BPMNShape_19ik5f8" bpmnElement="Gateway_0azwmrj" isMarkerVisible="true">
+        <dc:Bounds x="1925" y="545" width="50" height="50" />
+        <bpmndi:BPMNLabel>
+          <dc:Bounds x="1097" y="195" width="71" height="14" />
+        </bpmndi:BPMNLabel>
+      </bpmndi:BPMNShape>
+      <bpmndi:BPMNShape id="BPMNShape_0ju6rps" bpmnElement="Event_1kq9mri">
+        <dc:Bounds x="1932" y="652" width="36" height="36" />
+        <bpmndi:BPMNLabel>
+          <dc:Bounds x="1919" y="695" width="69" height="14" />
+        </bpmndi:BPMNLabel>
+      </bpmndi:BPMNShape>
+      <bpmndi:BPMNShape id="BPMNShape_1g8cr88" bpmnElement="Event_122ibhp">
+        <dc:Bounds x="1932" y="462" width="36" height="36" />
+        <bpmndi:BPMNLabel>
+          <dc:Bounds x="1923" y="432" width="55" height="14" />
+        </bpmndi:BPMNLabel>
+      </bpmndi:BPMNShape>
+      <bpmndi:BPMNShape id="Event_163qihc_di" bpmnElement="Event_163qihc">
+        <dc:Bounds x="2042" y="552" width="36" height="36" />
+      </bpmndi:BPMNShape>
+      <bpmndi:BPMNShape id="BPMNShape_0r3aa7n" bpmnElement="FIN_FUNC_EXPERT">
+        <dc:Bounds x="1760" y="530" width="100" height="80" />
+        <bpmndi:BPMNLabel />
+      </bpmndi:BPMNShape>
+      <bpmndi:BPMNShape id="Event_0pi73ga_di" bpmnElement="Event_1qcrkhv">
+        <dc:Bounds x="1812" y="652" width="36" height="36" />
+        <bpmndi:BPMNLabel>
+          <dc:Bounds x="1795" y="695" width="71" height="27" />
+        </bpmndi:BPMNLabel>
+      </bpmndi:BPMNShape>
+      <bpmndi:BPMNShape id="Activity_0x47n1k_di" bpmnElement="preStepFinFuncExpert">
+        <dc:Bounds x="1630" y="530" width="100" height="80" />
+        <bpmndi:BPMNLabel />
+      </bpmndi:BPMNShape>
+      <bpmndi:BPMNShape id="Event_1wn287i_di" bpmnElement="Event_1442r1l">
+        <dc:Bounds x="1682" y="652" width="36" height="36" />
+        <bpmndi:BPMNLabel>
+          <dc:Bounds x="1665" y="695" width="71" height="27" />
+        </bpmndi:BPMNLabel>
+      </bpmndi:BPMNShape>
+      <bpmndi:BPMNShape id="Event_0wcm07a_di" bpmnElement="Event_1e2e9fg">
+        <dc:Bounds x="1682" y="592" width="36" height="36" />
+        <bpmndi:BPMNLabel>
+          <dc:Bounds x="1680" y="635" width="41" height="14" />
+        </bpmndi:BPMNLabel>
+      </bpmndi:BPMNShape>
+      <bpmndi:BPMNShape id="Event_0ctx162_di" bpmnElement="Event_0s21oe0">
+        <dc:Bounds x="1812" y="592" width="36" height="36" />
+        <bpmndi:BPMNLabel>
+          <dc:Bounds x="1810" y="635" width="41" height="14" />
+        </bpmndi:BPMNLabel>
+      </bpmndi:BPMNShape>
+      <bpmndi:BPMNShape id="Event_1jd6nml_di" bpmnElement="Event_01c1kse">
+        <dc:Bounds x="1552" y="592" width="36" height="36" />
+        <bpmndi:BPMNLabel>
+          <dc:Bounds x="1598" y="603" width="41" height="14" />
+        </bpmndi:BPMNLabel>
+      </bpmndi:BPMNShape>
+      <bpmndi:BPMNShape id="BPMNShape_0w8r9q1" bpmnElement="Event_1six651">
+        <dc:Bounds x="1472" y="592" width="36" height="36" />
+        <bpmndi:BPMNLabel>
+          <dc:Bounds x="1453" y="635" width="77" height="14" />
+        </bpmndi:BPMNLabel>
+      </bpmndi:BPMNShape>
+      <bpmndi:BPMNShape id="Event_1aftt83_di" bpmnElement="Event_1if494a">
+        <dc:Bounds x="1382" y="592" width="36" height="36" />
+        <bpmndi:BPMNLabel>
+          <dc:Bounds x="1380" y="635" width="41" height="14" />
+        </bpmndi:BPMNLabel>
+      </bpmndi:BPMNShape>
+      <bpmndi:BPMNEdge id="Flow_18wue0r_di" bpmnElement="Flow_18wue0r">
+        <di:waypoint x="198" y="410" />
+        <di:waypoint x="230" y="410" />
+      </bpmndi:BPMNEdge>
+      <bpmndi:BPMNEdge id="Flow_14rok4g_di" bpmnElement="Flow_14rok4g">
+        <di:waypoint x="600" y="410" />
+        <di:waypoint x="632" y="410" />
+      </bpmndi:BPMNEdge>
+      <bpmndi:BPMNEdge id="Flow_1121wso_di" bpmnElement="Flow_1121wso">
+        <di:waypoint x="470" y="410" />
+        <di:waypoint x="500" y="410" />
+      </bpmndi:BPMNEdge>
+      <bpmndi:BPMNEdge id="Flow_1wskxs0_di" bpmnElement="Flow_1wskxs0">
+        <di:waypoint x="330" y="410" />
+        <di:waypoint x="370" y="410" />
+      </bpmndi:BPMNEdge>
+      <bpmndi:BPMNEdge id="Flow_0sychlg_di" bpmnElement="Flow_0sychlg">
+        <di:waypoint x="198" y="570" />
+        <di:waypoint x="230" y="570" />
+      </bpmndi:BPMNEdge>
+      <bpmndi:BPMNEdge id="Flow_19al8ty_di" bpmnElement="Flow_19al8ty">
+        <di:waypoint x="330" y="570" />
+        <di:waypoint x="370" y="570" />
+      </bpmndi:BPMNEdge>
+      <bpmndi:BPMNEdge id="Flow_0cqbr2h_di" bpmnElement="Flow_0cqbr2h">
+        <di:waypoint x="470" y="570" />
+        <di:waypoint x="500" y="570" />
+      </bpmndi:BPMNEdge>
+      <bpmndi:BPMNEdge id="Flow_1nb5uug_di" bpmnElement="Flow_1nb5uug">
+        <di:waypoint x="600" y="570" />
+        <di:waypoint x="632" y="570" />
+      </bpmndi:BPMNEdge>
+      <bpmndi:BPMNEdge id="BPMNEdge_1f3v2ae" bpmnElement="Flow_13n1utu">
+        <di:waypoint x="198" y="700" />
+        <di:waypoint x="230" y="700" />
+      </bpmndi:BPMNEdge>
+      <bpmndi:BPMNEdge id="BPMNEdge_07tlact" bpmnElement="Flow_1xaw8d6">
+        <di:waypoint x="330" y="700" />
+        <di:waypoint x="370" y="700" />
+      </bpmndi:BPMNEdge>
+      <bpmndi:BPMNEdge id="BPMNEdge_1qeb6k9" bpmnElement="Flow_0kzsc3l">
+        <di:waypoint x="470" y="700" />
+        <di:waypoint x="500" y="700" />
+      </bpmndi:BPMNEdge>
+      <bpmndi:BPMNEdge id="BPMNEdge_19divj9" bpmnElement="Flow_04si9zx">
+        <di:waypoint x="600" y="700" />
+        <di:waypoint x="632" y="700" />
+      </bpmndi:BPMNEdge>
+      <bpmndi:BPMNEdge id="Flow_1as5qye_di" bpmnElement="Flow_1as5qye">
+        <di:waypoint x="988" y="570" />
+        <di:waypoint x="1040" y="570" />
+      </bpmndi:BPMNEdge>
+      <bpmndi:BPMNEdge id="Flow_0so1809_di" bpmnElement="Flow_0so1809">
+        <di:waypoint x="998" y="330" />
+        <di:waypoint x="1040" y="330" />
+      </bpmndi:BPMNEdge>
+      <bpmndi:BPMNEdge id="Flow_115jbpt_di" bpmnElement="Flow_115jbpt">
+        <di:waypoint x="1090" y="370" />
+        <di:waypoint x="1090" y="425" />
+      </bpmndi:BPMNEdge>
+      <bpmndi:BPMNEdge id="Flow_1s3qsi8_di" bpmnElement="Flow_1s3qsi8">
+        <di:waypoint x="908" y="330" />
+        <di:waypoint x="962" y="330" />
+        <bpmndi:BPMNLabel>
+          <dc:Bounds x="910" y="312" width="50" height="14" />
+        </bpmndi:BPMNLabel>
+      </bpmndi:BPMNEdge>
+      <bpmndi:BPMNEdge id="Flow_0ocexp9_di" bpmnElement="Flow_0ocexp9">
+        <di:waypoint x="1115" y="450" />
+        <di:waypoint x="1142" y="450" />
+      </bpmndi:BPMNEdge>
+      <bpmndi:BPMNEdge id="Flow_1it8yut_di" bpmnElement="Flow_1it8yut">
+        <di:waypoint x="1090" y="475" />
+        <di:waypoint x="1090" y="530" />
+      </bpmndi:BPMNEdge>
+      <bpmndi:BPMNEdge id="Flow_0491rza_di" bpmnElement="Flow_0491rza">
+        <di:waypoint x="1290" y="570" />
+        <di:waypoint x="1330" y="570" />
+      </bpmndi:BPMNEdge>
+      <bpmndi:BPMNEdge id="Flow_0noqp32_di" bpmnElement="Flow_0noqp32">
+        <di:waypoint x="1430" y="570" />
+        <di:waypoint x="1470" y="570" />
+      </bpmndi:BPMNEdge>
+      <bpmndi:BPMNEdge id="Flow_16y5q5d_di" bpmnElement="Flow_16y5q5d">
+        <di:waypoint x="1400" y="628" />
+        <di:waypoint x="1400" y="672" />
+      </bpmndi:BPMNEdge>
+      <bpmndi:BPMNEdge id="Flow_16n2gjd_di" bpmnElement="Flow_16n2gjd">
+        <di:waypoint x="1570" y="628" />
+        <di:waypoint x="1570" y="672" />
+      </bpmndi:BPMNEdge>
+      <bpmndi:BPMNEdge id="Flow_1kl5lv6_di" bpmnElement="Flow_1kl5lv6">
+        <di:waypoint x="1490" y="628" />
+        <di:waypoint x="1490" y="672" />
+      </bpmndi:BPMNEdge>
+      <bpmndi:BPMNEdge id="Flow_1n2o28n_di" bpmnElement="Flow_1n2o28n">
+        <di:waypoint x="1140" y="570" />
+        <di:waypoint x="1190" y="570" />
+      </bpmndi:BPMNEdge>
+      <bpmndi:BPMNEdge id="BPMNEdge_1eeifqy" bpmnElement="Flow_03lffiq">
+        <di:waypoint x="1950" y="595" />
+        <di:waypoint x="1950" y="652" />
+        <bpmndi:BPMNLabel>
+          <dc:Bounds x="2037" y="621" width="0" height="40" />
+        </bpmndi:BPMNLabel>
+      </bpmndi:BPMNEdge>
+      <bpmndi:BPMNEdge id="BPMNEdge_11qcp0c" bpmnElement="Flow_1x6euyt">
+        <di:waypoint x="1950" y="545" />
+        <di:waypoint x="1950" y="498" />
+      </bpmndi:BPMNEdge>
+      <bpmndi:BPMNEdge id="Flow_0ugapy4_di" bpmnElement="Flow_0ugapy4">
+        <di:waypoint x="1975" y="570" />
+        <di:waypoint x="2042" y="570" />
+      </bpmndi:BPMNEdge>
+      <bpmndi:BPMNEdge id="Flow_16dpqms_di" bpmnElement="Flow_16dpqms">
+        <di:waypoint x="1730" y="570" />
+        <di:waypoint x="1760" y="570" />
+      </bpmndi:BPMNEdge>
+      <bpmndi:BPMNEdge id="Flow_0phnkh3_di" bpmnElement="Flow_0phnkh3">
+        <di:waypoint x="1830" y="628" />
+        <di:waypoint x="1830" y="652" />
+      </bpmndi:BPMNEdge>
+      <bpmndi:BPMNEdge id="Flow_0tswemp_di" bpmnElement="Flow_0tswemp">
+        <di:waypoint x="1700" y="628" />
+        <di:waypoint x="1700" y="652" />
+      </bpmndi:BPMNEdge>
+      <bpmndi:BPMNEdge id="Flow_0jryjlz_di" bpmnElement="Flow_0jryjlz">
+        <di:waypoint x="1860" y="570" />
+        <di:waypoint x="1925" y="570" />
+      </bpmndi:BPMNEdge>
+      <bpmndi:BPMNEdge id="Flow_0d8hnpd_di" bpmnElement="Flow_0d8hnpd">
+        <di:waypoint x="1570" y="570" />
+        <di:waypoint x="1630" y="570" />
+      </bpmndi:BPMNEdge>
+    </bpmndi:BPMNPlane>
+  </bpmndi:BPMNDiagram>
+</bpmn:definitions>
