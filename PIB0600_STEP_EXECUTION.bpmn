@@ -31,8 +31,10 @@ execution.setVariable('messageProperties', [commentText: 'Сюда добави�
           <camunda:script scriptFormat="groovy">/* Для передачи значения taskOutcome в Родительский процесс */
 def currentVal = task.getVariable("taskOutcome")
 if (currentVal == "TAB0600_REVISE" || currentVal == "TAB0600_DECLINE") {
-    // Принудительно поднимаем значение на уровень инстанса дочернего процесса
-    task.getExecution().setVariable("taskOutcome", currentVal)
+    // ИСПРАВЛЕНО: Меняем getExecution() на getProcessInstance()
+    // Теперь значение гарантированно поднимается на самый верхний уровень дочернего процесса,
+    // минуя локальные ветки параллельных задач (Multi-Instance scopes)
+    task.getProcessInstance().setVariable("taskOutcome", currentVal)
 }</camunda:script>
         </camunda:taskListener>
       </bpmn:extensionElements>
@@ -258,12 +260,6 @@ execution.setVariable("parallelAssigneesList", cleanCollection)
   <bpmn:error id="Error_0aexqe7" name="ERROR" errorCode="ERROR" camunda:errorMessage="errorMessage" />
   <bpmndi:BPMNDiagram id="BPMNDiagram_1">
     <bpmndi:BPMNPlane id="BPMNPlane_1" bpmnElement="PIB0600_STEP_EXECUTION">
-      <bpmndi:BPMNShape id="BPMNShape_16om3i3" bpmnElement="SubStart">
-        <dc:Bounds x="172" y="192" width="36" height="36" />
-        <bpmndi:BPMNLabel>
-          <dc:Bounds x="157" y="235" width="67" height="14" />
-        </bpmndi:BPMNLabel>
-      </bpmndi:BPMNShape>
       <bpmndi:BPMNShape id="BPMNShape_06xgw0q" bpmnElement="Gateway_StepType" isMarkerVisible="true">
         <dc:Bounds x="415" y="185" width="50" height="50" />
         <bpmndi:BPMNLabel>
@@ -276,9 +272,6 @@ execution.setVariable("parallelAssigneesList", cleanCollection)
       <bpmndi:BPMNShape id="BPMNShape_03ofpd4" bpmnElement="Gateway_Merge" isMarkerVisible="true">
         <dc:Bounds x="685" y="185" width="50" height="50" />
       </bpmndi:BPMNShape>
-      <bpmndi:BPMNShape id="BPMNShape_178gtoj" bpmnElement="Task_SingleOrGroup">
-        <dc:Bounds x="530" y="80" width="100" height="80" />
-      </bpmndi:BPMNShape>
       <bpmndi:BPMNShape id="BPMNShape_1ehu1ck" bpmnElement="SubEnd">
         <dc:Bounds x="782" y="192" width="36" height="36" />
         <bpmndi:BPMNLabel>
@@ -289,10 +282,15 @@ execution.setVariable("parallelAssigneesList", cleanCollection)
         <dc:Bounds x="260" y="170" width="100" height="80" />
         <bpmndi:BPMNLabel />
       </bpmndi:BPMNShape>
-      <bpmndi:BPMNEdge id="Flow_0brv6y3_di" bpmnElement="Flow_0brv6y3">
-        <di_1:waypoint x="208" y="210" />
-        <di_1:waypoint x="260" y="210" />
-      </bpmndi:BPMNEdge>
+      <bpmndi:BPMNShape id="BPMNShape_178gtoj" bpmnElement="Task_SingleOrGroup">
+        <dc:Bounds x="530" y="80" width="100" height="80" />
+      </bpmndi:BPMNShape>
+      <bpmndi:BPMNShape id="BPMNShape_16om3i3" bpmnElement="SubStart">
+        <dc:Bounds x="172" y="192" width="36" height="36" />
+        <bpmndi:BPMNLabel>
+          <dc:Bounds x="157" y="235" width="67" height="14" />
+        </bpmndi:BPMNLabel>
+      </bpmndi:BPMNShape>
       <bpmndi:BPMNEdge id="BPMNEdge_1wtj72t" bpmnElement="Flow_0liufkh">
         <di_1:waypoint x="360" y="210" />
         <di_1:waypoint x="415" y="210" />
@@ -325,6 +323,10 @@ execution.setVariable("parallelAssigneesList", cleanCollection)
         <di_1:waypoint x="630" y="120" />
         <di_1:waypoint x="710" y="120" />
         <di_1:waypoint x="710" y="185" />
+      </bpmndi:BPMNEdge>
+      <bpmndi:BPMNEdge id="Flow_0brv6y3_di" bpmnElement="Flow_0brv6y3">
+        <di_1:waypoint x="208" y="210" />
+        <di_1:waypoint x="260" y="210" />
       </bpmndi:BPMNEdge>
       <bpmndi:BPMNEdge id="Flow_0vodv9m_di" bpmnElement="Flow_0vodv9m">
         <di_1:waypoint x="735" y="210" />
