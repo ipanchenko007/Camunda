@@ -17,6 +17,8 @@
         </camunda:inputOutput>
         <camunda:executionListener event="start">
           <camunda:script scriptFormat="groovy">//Смотрим пример формирования в процессе "Отправка уведомлений задачи пользователя" (UserTaskNotificationDelegateProcess)
+def log = org.slf4j.LoggerFactory.getLogger("${processCode}_Task_Parallel")
+log.info("PIB0600_STEP_EXECUTION setVariable messageProperties")
 execution.setVariable('messageProperties', [commentText: 'Сюда добавим комментарий'])</camunda:script>
         </camunda:executionListener>
         <camunda:taskListener delegateExpression="#{userTaskNotificationListener}" event="create" id="notificationListener">
@@ -31,10 +33,8 @@ execution.setVariable('messageProperties', [commentText: 'Сюда добави�
           <camunda:script scriptFormat="groovy">/* Для передачи значения taskOutcome в Родительский процесс */
 def currentVal = task.getVariable("taskOutcome")
 if (currentVal == "TAB0600_REVISE" || currentVal == "TAB0600_DECLINE") {
-    // ИСПРАВЛЕНО: Меняем getExecution() на getProcessInstance()
-    // Теперь значение гарантированно поднимается на самый верхний уровень дочернего процесса,
-    // минуя локальные ветки параллельных задач (Multi-Instance scopes)
-    task.getProcessInstance().setVariable("taskOutcome", currentVal)
+    // Принудительно поднимаем значение на уровень инстанса дочернего процесса
+    task.getExecution().setVariable("taskOutcome", currentVal)
 }</camunda:script>
         </camunda:taskListener>
       </bpmn:extensionElements>
@@ -141,11 +141,9 @@ def stepFormJson = new JsonBuilder([
 // Сохраняем в переменную процесса
 execution.setVariable("stepFormMap", stepFormJson)
 
-// Вместо removeVariable мы перезаписываем значение в нейтральный статус.
-// Это очищает контекст Camunda для нового шага, но сохраняет саму переменную для Симфонии.
-execution.setVariable("taskOutcome", "NONE")
-
-log.info("PROCESS [{}] stepFormMap: [{}], taskOutcome сброшен в NONE", execution.getProcessInstanceId(), stepFormJson)</bpmn:script>
+//Нельзя изменять значение taskOutcome !!!
+//execution.setVariable("taskOutcome", "NONE")
+</bpmn:script>
       </bpmn:scriptTask>
       <bpmn:sequenceFlow id="Flow_1rlyn4f" sourceRef="Event_1k7p0h1" targetRef="setupStatus" />
       <bpmn:sequenceFlow id="Flow_141pagw" sourceRef="setupStatus" targetRef="Activity_0uznoc9" />
