@@ -298,6 +298,7 @@ import org.camunda.bpm.engine.delegate.BpmnError
 //Использование import groovy.json.JsonBuilder позволяет удобно формировать новые JSON-структуры внутри скрипта Camunda 7
 import groovy.json.JsonBuilder
 
+//Рекомендаци ИИ: Заменить на статический строковый логгер платформы
 def log = org.slf4j.LoggerFactory.getLogger("${processCode}_setupStages")
 def processInstanceId = execution.getProcessInstanceId()
 log.info("PROCESS [{}] ---Start Сборка динамического маршрута---", processInstanceId)
@@ -747,6 +748,8 @@ if (stepsCollection.isEmpty()) {
 }
 
 //Если в форме документа сохранена информация об ошибке, а теперь ошибки нет, то чистим значение ERROR_MESSAGE и ERROR_FLAG_YN (если есть)
+//Вариант 1. Гашение ошибки интеграции - Пока используем его (см. блок catch)!
+//Вариант 2. Вынос очистки в отдельный Service Task с асинхронной поддержкой - Оставим на будущее!
 def oldErrorValue = metaMap?.attributes?.ERROR_MESSAGE ?: ""
 if (oldErrorValue != "" &amp;&amp; errorMessage == "") {
   //Вариант 1. С использованием groovy.json.JsonBuilder
@@ -766,10 +769,11 @@ if (oldErrorValue != "" &amp;&amp; errorMessage == "") {
     restClient.execute(execution)
   
   } catch (Exception e) {
-    log.info("PROCESS [{}] Error call fullPath: {} body: {}", processInstanceId, fullPath, errorJsonMap)
-    errorMessage = "Не удалось очистить атрибут ERROR_MESSAGE"
-    //execution.setVariable("errorMessage", errorMessage) //Сохраним значение errorMessage - Лишнее, т.к. значение сохранится в boundaryEvent
-    throw new BpmnError("ERROR", errorMessage)
+    // Вместо обрушения процесса — мягко логируем ошибку интеграции. 
+    // Процесс НЕ зациклится, а продолжит построение маршрута.
+    log.error("PROCESS [{}]: Критическая ошибка Симфонии при очистке атрибутов: {}. Путь: {}", 
+              processInstanceId, e.getMessage(), fullPath)
+    // НЕ выбрасываем throw new BpmnError("ERROR", ...)!
   }  
 }
 
@@ -892,6 +896,22 @@ execution.setVariable("statusCode", "DSB0600_REVISE")</camunda:script>
   <bpmn:error id="Error_0aexqe7" name="ERROR" errorCode="ERROR" camunda:errorMessage="errorMessage" />
   <bpmndi:BPMNDiagram id="BPMNDiagram_1">
     <bpmndi:BPMNPlane id="BPMNPlane_1" bpmnElement="PIB0600_DYNAMIC_ROUTING_MAIN">
+      <bpmndi:BPMNShape id="_BPMNShape_StartEvent_2" bpmnElement="StartEvent_1">
+        <dc:Bounds x="172" y="232" width="36" height="36" />
+        <bpmndi:BPMNLabel>
+          <dc:Bounds x="159" y="275" width="64" height="14" />
+        </bpmndi:BPMNLabel>
+      </bpmndi:BPMNShape>
+      <bpmndi:BPMNShape id="Task_GlobalRevision_di" bpmnElement="Task_GlobalRevision">
+        <dc:Bounds x="670" y="463" width="100" height="80" />
+        <bpmndi:BPMNLabel />
+      </bpmndi:BPMNShape>
+      <bpmndi:BPMNShape id="EndEvent_1_di" bpmnElement="EndEvent_1">
+        <dc:Bounds x="1242" y="232" width="36" height="36" />
+        <bpmndi:BPMNLabel>
+          <dc:Bounds x="1231" y="275" width="60" height="14" />
+        </bpmndi:BPMNLabel>
+      </bpmndi:BPMNShape>
       <bpmndi:BPMNShape id="Event_1ciaew0_di" bpmnElement="catchEventError">
         <dc:Bounds x="182" y="742" width="36" height="36" />
         <bpmndi:BPMNLabel>
@@ -940,26 +960,40 @@ execution.setVariable("statusCode", "DSB0600_REVISE")</camunda:script>
         <dc:Bounds x="390" y="852" width="100" height="80" />
         <bpmndi:BPMNLabel />
       </bpmndi:BPMNShape>
-      <bpmndi:BPMNShape id="_BPMNShape_StartEvent_2" bpmnElement="StartEvent_1">
-        <dc:Bounds x="172" y="232" width="36" height="36" />
-        <bpmndi:BPMNLabel>
-          <dc:Bounds x="159" y="275" width="64" height="14" />
-        </bpmndi:BPMNLabel>
-      </bpmndi:BPMNShape>
-      <bpmndi:BPMNShape id="Task_GlobalRevision_di" bpmnElement="Task_GlobalRevision">
-        <dc:Bounds x="670" y="463" width="100" height="80" />
-        <bpmndi:BPMNLabel />
-      </bpmndi:BPMNShape>
-      <bpmndi:BPMNShape id="EndEvent_1_di" bpmnElement="EndEvent_1">
-        <dc:Bounds x="1242" y="232" width="36" height="36" />
-        <bpmndi:BPMNLabel>
-          <dc:Bounds x="1231" y="275" width="60" height="14" />
-        </bpmndi:BPMNLabel>
-      </bpmndi:BPMNShape>
       <bpmndi:BPMNShape id="BPMNShape_0lkljds" bpmnElement="setDocumentAttributes">
         <dc:Bounds x="250" y="210" width="100" height="80" />
         <bpmndi:BPMNLabel />
       </bpmndi:BPMNShape>
+      <bpmndi:BPMNShape id="Activity_1fm3yfi_di" bpmnElement="Activity_0dtqxyu" isExpanded="true">
+        <dc:Bounds x="810" y="720" width="430" height="200" />
+        <bpmndi:BPMNLabel />
+      </bpmndi:BPMNShape>
+      <bpmndi:BPMNShape id="BPMNShape_1nivq4x" bpmnElement="Activity_11xhg60">
+        <dc:Bounds x="900" y="780" width="100" height="80" />
+        <bpmndi:BPMNLabel />
+      </bpmndi:BPMNShape>
+      <bpmndi:BPMNShape id="Event_1v35zna_di" bpmnElement="Event_1v35zna">
+        <dc:Bounds x="1172" y="802" width="36" height="36" />
+      </bpmndi:BPMNShape>
+      <bpmndi:BPMNShape id="BPMNShape_1kx2o5h" bpmnElement="Activity_0afnqx2">
+        <dc:Bounds x="1030" y="780" width="100" height="80" />
+        <bpmndi:BPMNLabel />
+      </bpmndi:BPMNShape>
+      <bpmndi:BPMNShape id="Event_0961i8q_di" bpmnElement="Event_14d61rq">
+        <dc:Bounds x="830" y="802" width="36" height="36" />
+      </bpmndi:BPMNShape>
+      <bpmndi:BPMNEdge id="Flow_0mkcmy6_di" bpmnElement="Flow_0mkcmy6">
+        <di_1:waypoint x="866" y="820" />
+        <di_1:waypoint x="900" y="820" />
+      </bpmndi:BPMNEdge>
+      <bpmndi:BPMNEdge id="Flow_0zv2mkg_di" bpmnElement="Flow_0zv2mkg">
+        <di_1:waypoint x="1000" y="820" />
+        <di_1:waypoint x="1030" y="820" />
+      </bpmndi:BPMNEdge>
+      <bpmndi:BPMNEdge id="Flow_0c5dnyh_di" bpmnElement="Flow_0c5dnyh">
+        <di_1:waypoint x="1130" y="820" />
+        <di_1:waypoint x="1172" y="820" />
+      </bpmndi:BPMNEdge>
       <bpmndi:BPMNShape id="Activity_1kegiua_di" bpmnElement="setupSteps">
         <dc:Bounds x="390" y="210" width="100" height="80" />
         <bpmndi:BPMNLabel />
@@ -1006,42 +1040,20 @@ execution.setVariable("statusCode", "DSB0600_REVISE")</camunda:script>
           <dc:Bounds x="692" y="81" width="55" height="14" />
         </bpmndi:BPMNLabel>
       </bpmndi:BPMNShape>
-      <bpmndi:BPMNShape id="Activity_1fm3yfi_di" bpmnElement="Activity_0dtqxyu" isExpanded="true">
-        <dc:Bounds x="810" y="720" width="430" height="200" />
-        <bpmndi:BPMNLabel />
-      </bpmndi:BPMNShape>
-      <bpmndi:BPMNShape id="BPMNShape_1nivq4x" bpmnElement="Activity_11xhg60">
-        <dc:Bounds x="900" y="780" width="100" height="80" />
-        <bpmndi:BPMNLabel />
-      </bpmndi:BPMNShape>
-      <bpmndi:BPMNShape id="Event_1v35zna_di" bpmnElement="Event_1v35zna">
-        <dc:Bounds x="1172" y="802" width="36" height="36" />
-      </bpmndi:BPMNShape>
-      <bpmndi:BPMNShape id="BPMNShape_1kx2o5h" bpmnElement="Activity_0afnqx2">
-        <dc:Bounds x="1030" y="780" width="100" height="80" />
-        <bpmndi:BPMNLabel />
-      </bpmndi:BPMNShape>
-      <bpmndi:BPMNShape id="Event_0961i8q_di" bpmnElement="Event_14d61rq">
-        <dc:Bounds x="830" y="802" width="36" height="36" />
-      </bpmndi:BPMNShape>
-      <bpmndi:BPMNEdge id="Flow_0mkcmy6_di" bpmnElement="Flow_0mkcmy6">
-        <di_1:waypoint x="866" y="820" />
-        <di_1:waypoint x="900" y="820" />
-      </bpmndi:BPMNEdge>
-      <bpmndi:BPMNEdge id="Flow_0zv2mkg_di" bpmnElement="Flow_0zv2mkg">
-        <di_1:waypoint x="1000" y="820" />
-        <di_1:waypoint x="1030" y="820" />
-      </bpmndi:BPMNEdge>
-      <bpmndi:BPMNEdge id="Flow_0c5dnyh_di" bpmnElement="Flow_0c5dnyh">
-        <di_1:waypoint x="1130" y="820" />
-        <di_1:waypoint x="1172" y="820" />
-      </bpmndi:BPMNEdge>
       <bpmndi:BPMNShape id="Event_1aftt83_di" bpmnElement="Event_1if494a">
         <dc:Bounds x="422" y="272" width="36" height="36" />
         <bpmndi:BPMNLabel>
           <dc:Bounds x="420" y="315" width="41" height="14" />
         </bpmndi:BPMNLabel>
       </bpmndi:BPMNShape>
+      <bpmndi:BPMNEdge id="Flow_ToAnchor_di" bpmnElement="Flow_ToAnchor">
+        <di_1:waypoint x="208" y="250" />
+        <di_1:waypoint x="250" y="250" />
+      </bpmndi:BPMNEdge>
+      <bpmndi:BPMNEdge id="Flow_BackFromGlobalRevision_di" bpmnElement="Flow_BackFromGlobalRevision">
+        <di_1:waypoint x="670" y="503" />
+        <di_1:waypoint x="605" y="503" />
+      </bpmndi:BPMNEdge>
       <bpmndi:BPMNEdge id="Flow_0sychlg_di" bpmnElement="Flow_0sychlg">
         <di_1:waypoint x="218" y="760" />
         <di_1:waypoint x="250" y="760" />
@@ -1074,27 +1086,6 @@ execution.setVariable("statusCode", "DSB0600_REVISE")</camunda:script>
         <di_1:waypoint x="350" y="892" />
         <di_1:waypoint x="390" y="892" />
       </bpmndi:BPMNEdge>
-      <bpmndi:BPMNEdge id="Flow_ToAnchor_di" bpmnElement="Flow_ToAnchor">
-        <di_1:waypoint x="208" y="250" />
-        <di_1:waypoint x="250" y="250" />
-      </bpmndi:BPMNEdge>
-      <bpmndi:BPMNEdge id="Flow_1ar83bi_di" bpmnElement="Flow_1ar83bi">
-        <di_1:waypoint x="720" y="401" />
-        <di_1:waypoint x="720" y="463" />
-      </bpmndi:BPMNEdge>
-      <bpmndi:BPMNEdge id="Flow_BackFromGlobalRevision_di" bpmnElement="Flow_BackFromGlobalRevision">
-        <di_1:waypoint x="670" y="503" />
-        <di_1:waypoint x="605" y="503" />
-      </bpmndi:BPMNEdge>
-      <bpmndi:BPMNEdge id="Flow_15tfl2i_di" bpmnElement="Flow_15tfl2i">
-        <di_1:waypoint x="1200" y="250" />
-        <di_1:waypoint x="1242" y="250" />
-      </bpmndi:BPMNEdge>
-      <bpmndi:BPMNEdge id="Flow_0wu0h3o_di" bpmnElement="Flow_0wu0h3o">
-        <di_1:waypoint x="555" y="503" />
-        <di_1:waypoint x="300" y="503" />
-        <di_1:waypoint x="300" y="290" />
-      </bpmndi:BPMNEdge>
       <bpmndi:BPMNEdge id="Flow_1ly58ht_di" bpmnElement="Flow_ToSubprocess">
         <di_1:waypoint x="350" y="250" />
         <di_1:waypoint x="390" y="250" />
@@ -1102,6 +1093,11 @@ execution.setVariable("statusCode", "DSB0600_REVISE")</camunda:script>
       <bpmndi:BPMNEdge id="Flow_1bifo73_di" bpmnElement="Flow_1bifo73">
         <di_1:waypoint x="490" y="250" />
         <di_1:waypoint x="540" y="250" />
+      </bpmndi:BPMNEdge>
+      <bpmndi:BPMNEdge id="Flow_0wu0h3o_di" bpmnElement="Flow_0wu0h3o">
+        <di_1:waypoint x="555" y="503" />
+        <di_1:waypoint x="300" y="503" />
+        <di_1:waypoint x="300" y="290" />
       </bpmndi:BPMNEdge>
       <bpmndi:BPMNEdge id="Flow_05zaga1_di" bpmnElement="Flow_05zaga1">
         <di_1:waypoint x="580" y="528" />
@@ -1111,17 +1107,21 @@ execution.setVariable("statusCode", "DSB0600_REVISE")</camunda:script>
         <di_1:waypoint x="440" y="308" />
         <di_1:waypoint x="440" y="345" />
       </bpmndi:BPMNEdge>
-      <bpmndi:BPMNEdge id="Flow_1aombnk_di" bpmnElement="Flow_1aombnk">
-        <di_1:waypoint x="745" y="250" />
-        <di_1:waypoint x="960" y="250" />
-      </bpmndi:BPMNEdge>
       <bpmndi:BPMNEdge id="Flow_00ss0x4_di" bpmnElement="Flow_00ss0x4">
         <di_1:waypoint x="1060" y="250" />
         <di_1:waypoint x="1100" y="250" />
       </bpmndi:BPMNEdge>
+      <bpmndi:BPMNEdge id="Flow_15tfl2i_di" bpmnElement="Flow_15tfl2i">
+        <di_1:waypoint x="1200" y="250" />
+        <di_1:waypoint x="1242" y="250" />
+      </bpmndi:BPMNEdge>
       <bpmndi:BPMNEdge id="Flow_0ywojgm_di" bpmnElement="Flow_0ywojgm">
         <di_1:waypoint x="640" y="250" />
         <di_1:waypoint x="695" y="250" />
+      </bpmndi:BPMNEdge>
+      <bpmndi:BPMNEdge id="Flow_1aombnk_di" bpmnElement="Flow_1aombnk">
+        <di_1:waypoint x="745" y="250" />
+        <di_1:waypoint x="960" y="250" />
       </bpmndi:BPMNEdge>
       <bpmndi:BPMNEdge id="Flow_1dumnm6_di" bpmnElement="Flow_ToGlobalRevision">
         <di_1:waypoint x="720" y="275" />
@@ -1129,6 +1129,10 @@ execution.setVariable("statusCode", "DSB0600_REVISE")</camunda:script>
         <bpmndi:BPMNLabel>
           <dc:Bounds x="728" y="308" width="84" height="27" />
         </bpmndi:BPMNLabel>
+      </bpmndi:BPMNEdge>
+      <bpmndi:BPMNEdge id="Flow_1ar83bi_di" bpmnElement="Flow_1ar83bi">
+        <di_1:waypoint x="720" y="401" />
+        <di_1:waypoint x="720" y="463" />
       </bpmndi:BPMNEdge>
       <bpmndi:BPMNEdge id="Flow_1jlkrji_di" bpmnElement="Flow_ToRejectTask">
         <di_1:waypoint x="720" y="225" />
