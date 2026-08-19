@@ -4,6 +4,7 @@ import org.camunda.bpm.engine.delegate.BpmnError
 //Использование import groovy.json.JsonBuilder позволяет удобно формировать новые JSON-структуры внутри скрипта Camunda 7
 import groovy.json.JsonBuilder
 
+//Рекомендаци ИИ: Заменить на статический строковый логгер платформы
 def log = org.slf4j.LoggerFactory.getLogger("${processCode}_setupStages")
 def processInstanceId = execution.getProcessInstanceId()
 log.info("PROCESS [{}] ---Start Сборка динамического маршрута---", processInstanceId)
@@ -453,6 +454,8 @@ if (stepsCollection.isEmpty()) {
 }
 
 //Если в форме документа сохранена информация об ошибке, а теперь ошибки нет, то чистим значение ERROR_MESSAGE и ERROR_FLAG_YN (если есть)
+//Вариант 1. Гашение ошибки интеграции - Пока используем его (см. блок catch)!
+//Вариант 2. Вынос очистки в отдельный Service Task с асинхронной поддержкой - Оставим на будущее!
 def oldErrorValue = metaMap?.attributes?.ERROR_MESSAGE ?: ""
 if (oldErrorValue != "" && errorMessage == "") {
   //Вариант 1. С использованием groovy.json.JsonBuilder
@@ -472,10 +475,11 @@ if (oldErrorValue != "" && errorMessage == "") {
     restClient.execute(execution)
   
   } catch (Exception e) {
-    log.info("PROCESS [{}] Error call fullPath: {} body: {}", processInstanceId, fullPath, errorJsonMap)
-    errorMessage = "Не удалось очистить атрибут ERROR_MESSAGE"
-    //execution.setVariable("errorMessage", errorMessage) //Сохраним значение errorMessage - Лишнее, т.к. значение сохранится в boundaryEvent
-    throw new BpmnError("ERROR", errorMessage)
+    // Вместо обрушения процесса — мягко логируем ошибку интеграции. 
+    // Процесс НЕ зациклится, а продолжит построение маршрута.
+    log.error("PROCESS [{}]: Критическая ошибка Симфонии при очистке атрибутов: {}. Путь: {}", 
+              processInstanceId, e.getMessage(), fullPath)
+    // НЕ выбрасываем throw new BpmnError("ERROR", ...)!
   }  
 }
 
