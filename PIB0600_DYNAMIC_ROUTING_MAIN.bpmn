@@ -72,7 +72,7 @@ execution.setVariable('messageProperties', [commentText: 'Сюда добави�
       <bpmn:outgoing>Flow_BackFromGlobalRevision</bpmn:outgoing>
     </bpmn:userTask>
     <bpmn:endEvent id="EndEvent_1" name="EndEvent_1">
-      <bpmn:incoming>Flow_0pcltnz</bpmn:incoming>
+      <bpmn:incoming>Flow_1deure2</bpmn:incoming>
     </bpmn:endEvent>
     <bpmn:sequenceFlow id="Flow_ToAnchor" sourceRef="StartEvent_1" targetRef="setDocumentAttributes" />
     <bpmn:sequenceFlow id="Flow_BackFromGlobalRevision" sourceRef="Task_GlobalRevision" targetRef="Gateway_0yofwp4" />
@@ -830,24 +830,23 @@ log.info("PROCESS [{}] ---End Сборка динамического маршр
           </camunda:inputParameter>
         </camunda:inputOutput>
       </bpmn:extensionElements>
-      <bpmn:incoming>Flow_0dg2umr</bpmn:incoming>
-      <bpmn:outgoing>Flow_0pcltnz</bpmn:outgoing>
+      <bpmn:incoming>Flow_1aombnk</bpmn:incoming>
+      <bpmn:outgoing>Flow_1g71u4g</bpmn:outgoing>
     </bpmn:serviceTask>
     <bpmn:serviceTask id="noticeOfApproved" name="Отправка уведомления о Согласовании" camunda:delegateExpression="#{notificationSender}">
       <bpmn:extensionElements>
         <camunda:inputOutput>
           <camunda:inputParameter name="messageCode">NTB0600_EXECUTED</camunda:inputParameter>
           <camunda:inputParameter name="addresseeLogins">${initiator}</camunda:inputParameter>
-          <camunda:inputParameter name="properties">${messageProperties}</camunda:inputParameter>
+          <camunda:inputParameter name="properties">
+            <camunda:map>
+              <camunda:entry key="commentText">Сюда добавим комментарий</camunda:entry>
+            </camunda:map>
+          </camunda:inputParameter>
         </camunda:inputOutput>
-        <camunda:executionListener event="start">
-          <camunda:script scriptFormat="groovy">def log = org.slf4j.LoggerFactory.getLogger("${processCode}_noticeOfApproved")
-log.info("PIB0600_DYNAMIC_ROUTING_MAIN DSB0600_EXECUTED setVariable messageProperties")
-execution.setVariable('messageProperties', [commentText: 'Сюда добавим комментарий'])</camunda:script>
-        </camunda:executionListener>
       </bpmn:extensionElements>
-      <bpmn:incoming>Flow_1aombnk</bpmn:incoming>
-      <bpmn:outgoing>Flow_0dg2umr</bpmn:outgoing>
+      <bpmn:incoming>Flow_1g71u4g</bpmn:incoming>
+      <bpmn:outgoing>Flow_1deure2</bpmn:outgoing>
     </bpmn:serviceTask>
     <bpmn:callActivity id="StepExecution" name="Исполнение шага" calledElement="PIB0600_STEP_EXECUTION">
       <bpmn:extensionElements>
@@ -868,7 +867,7 @@ execution.setVariable('messageProperties', [commentText: 'Сюда добави�
       <bpmn:outgoing>Flow_ToGlobalRevision</bpmn:outgoing>
       <bpmn:outgoing>Flow_ToRejectTask</bpmn:outgoing>
     </bpmn:exclusiveGateway>
-    <bpmn:sequenceFlow id="Flow_1aombnk" sourceRef="Gateway_CheckStepOutcome" targetRef="noticeOfApproved" />
+    <bpmn:sequenceFlow id="Flow_1aombnk" sourceRef="Gateway_CheckStepOutcome" targetRef="Activity_15o3czr" />
     <bpmn:intermediateThrowEvent id="Event_1a2s7o8" name="на изменение Статуса">
       <bpmn:incoming>Flow_ToGlobalRevision</bpmn:incoming>
       <bpmn:outgoing>Flow_1ar83bi</bpmn:outgoing>
@@ -891,8 +890,8 @@ execution.setVariable("statusCode", "DSB0600_REVISE")</camunda:script>
     <bpmn:sequenceFlow id="Flow_ToRejectTask" sourceRef="Gateway_CheckStepOutcome" targetRef="Event_122ibhp">
       <bpmn:conditionExpression xsi_1:type="bpmn:tFormalExpression">${taskOutcome == 'TAB0600_DECLINE'}</bpmn:conditionExpression>
     </bpmn:sequenceFlow>
-    <bpmn:sequenceFlow id="Flow_0dg2umr" sourceRef="noticeOfApproved" targetRef="Activity_15o3czr" />
-    <bpmn:sequenceFlow id="Flow_0pcltnz" sourceRef="Activity_15o3czr" targetRef="EndEvent_1" />
+    <bpmn:sequenceFlow id="Flow_1deure2" sourceRef="noticeOfApproved" targetRef="EndEvent_1" />
+    <bpmn:sequenceFlow id="Flow_1g71u4g" sourceRef="Activity_15o3czr" targetRef="noticeOfApproved" />
   </bpmn:process>
   <bpmn:escalation id="Escalation_25pft9f" name="STATUS" escalationCode="STATUS" />
   <bpmn:error id="Error_0aexqe7" name="ERROR" errorCode="ERROR" camunda:errorMessage="errorMessage" />
@@ -960,14 +959,18 @@ execution.setVariable("statusCode", "DSB0600_REVISE")</camunda:script>
         <dc:Bounds x="250" y="210" width="100" height="80" />
         <bpmndi:BPMNLabel />
       </bpmndi:BPMNShape>
+      <bpmndi:BPMNShape id="BPMNShape_0k2fgfm" bpmnElement="Activity_15o3czr">
+        <dc:Bounds x="790" y="210" width="100" height="80" />
+        <bpmndi:BPMNLabel />
+      </bpmndi:BPMNShape>
       <bpmndi:BPMNShape id="BPMNShape_12u2l6v" bpmnElement="noticeOfApproved">
-        <dc:Bounds x="810" y="210" width="100" height="80" />
+        <dc:Bounds x="930" y="210" width="100" height="80" />
         <bpmndi:BPMNLabel />
       </bpmndi:BPMNShape>
       <bpmndi:BPMNShape id="EndEvent_1_di" bpmnElement="EndEvent_1">
-        <dc:Bounds x="1112" y="232" width="36" height="36" />
+        <dc:Bounds x="1072" y="232" width="36" height="36" />
         <bpmndi:BPMNLabel>
-          <dc:Bounds x="1101" y="275" width="60" height="14" />
+          <dc:Bounds x="1061" y="275" width="60" height="14" />
         </bpmndi:BPMNLabel>
       </bpmndi:BPMNShape>
       <bpmndi:BPMNShape id="Activity_1fm3yfi_di" bpmnElement="Activity_0dtqxyu" isExpanded="true">
@@ -1018,10 +1021,6 @@ execution.setVariable("statusCode", "DSB0600_REVISE")</camunda:script>
         <bpmndi:BPMNLabel>
           <dc:Bounds x="407" y="388" width="71" height="27" />
         </bpmndi:BPMNLabel>
-      </bpmndi:BPMNShape>
-      <bpmndi:BPMNShape id="BPMNShape_0k2fgfm" bpmnElement="Activity_15o3czr">
-        <dc:Bounds x="960" y="210" width="100" height="80" />
-        <bpmndi:BPMNLabel />
       </bpmndi:BPMNShape>
       <bpmndi:BPMNShape id="Activity_1u7v086_di" bpmnElement="StepExecution">
         <dc:Bounds x="540" y="210" width="100" height="80" />
@@ -1115,7 +1114,7 @@ execution.setVariable("statusCode", "DSB0600_REVISE")</camunda:script>
       </bpmndi:BPMNEdge>
       <bpmndi:BPMNEdge id="Flow_1aombnk_di" bpmnElement="Flow_1aombnk">
         <di_1:waypoint x="745" y="250" />
-        <di_1:waypoint x="810" y="250" />
+        <di_1:waypoint x="790" y="250" />
       </bpmndi:BPMNEdge>
       <bpmndi:BPMNEdge id="Flow_1dumnm6_di" bpmnElement="Flow_ToGlobalRevision">
         <di_1:waypoint x="720" y="275" />
@@ -1132,13 +1131,13 @@ execution.setVariable("statusCode", "DSB0600_REVISE")</camunda:script>
         <di_1:waypoint x="720" y="225" />
         <di_1:waypoint x="720" y="141" />
       </bpmndi:BPMNEdge>
-      <bpmndi:BPMNEdge id="Flow_0dg2umr_di" bpmnElement="Flow_0dg2umr">
-        <di_1:waypoint x="910" y="250" />
-        <di_1:waypoint x="960" y="250" />
+      <bpmndi:BPMNEdge id="Flow_1deure2_di" bpmnElement="Flow_1deure2">
+        <di_1:waypoint x="1030" y="250" />
+        <di_1:waypoint x="1072" y="250" />
       </bpmndi:BPMNEdge>
-      <bpmndi:BPMNEdge id="Flow_0pcltnz_di" bpmnElement="Flow_0pcltnz">
-        <di_1:waypoint x="1060" y="250" />
-        <di_1:waypoint x="1112" y="250" />
+      <bpmndi:BPMNEdge id="Flow_1g71u4g_di" bpmnElement="Flow_1g71u4g">
+        <di_1:waypoint x="890" y="250" />
+        <di_1:waypoint x="930" y="250" />
       </bpmndi:BPMNEdge>
     </bpmndi:BPMNPlane>
   </bpmndi:BPMNDiagram>
