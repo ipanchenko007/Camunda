@@ -17,9 +17,7 @@
         </camunda:inputOutput>
         <camunda:executionListener event="start">
           <camunda:script scriptFormat="groovy">//Смотрим пример формирования в процессе "Отправка уведомлений задачи пользователя" (UserTaskNotificationDelegateProcess)
-def log = org.slf4j.LoggerFactory.getLogger("${processCode}_Task_Parallel")
-log.info("PIB0600_STEP_EXECUTION setVariable messageProperties")
-execution.setVariable('messageProperties', [commentText: 'Сюда добавим комментарий'])</camunda:script>
+execution.setVariable('messageProperties', [commentText: 'Назначена параллельная Задача'])</camunda:script>
         </camunda:executionListener>
         <camunda:taskListener delegateExpression="#{userTaskNotificationListener}" event="create" id="notificationListener">
           <camunda:field name="messageCode">
@@ -40,7 +38,7 @@ if (currentVal == "TAB0600_REVISE" || currentVal == "TAB0600_DECLINE") {
       </bpmn:extensionElements>
       <bpmn:incoming>Flow_ToParallel</bpmn:incoming>
       <bpmn:outgoing>Flow_4</bpmn:outgoing>
-      <bpmn:multiInstanceLoopCharacteristics camunda:collection="parallelAssigneesList" camunda:elementVariable="assigneeLoop">
+      <bpmn:multiInstanceLoopCharacteristics camunda:asyncBefore="true" camunda:asyncAfter="true" camunda:collection="parallelAssigneesList" camunda:elementVariable="assigneeLoop">
         <bpmn:completionCondition xsi_1:type="bpmn:tFormalExpression">${taskOutcome == 'TAB0600_REVISE' or taskOutcome == 'TAB0600_DECLINE'}</bpmn:completionCondition>
       </bpmn:multiInstanceLoopCharacteristics>
     </bpmn:userTask>
@@ -173,7 +171,7 @@ if (step != null &amp;&amp; step.actions != null) {
         </camunda:inputOutput>
         <camunda:executionListener event="start">
           <camunda:script scriptFormat="groovy">//Смотрим пример формирования в процессе "Отправка уведомлений задачи пользователя" (UserTaskNotificationDelegateProcess)
-execution.setVariable('messageProperties', [commentText: 'Сюда добавим комментарий'])</camunda:script>
+execution.setVariable('messageProperties', [commentText: 'Назначена персональная Задача'])</camunda:script>
         </camunda:executionListener>
         <camunda:taskListener event="create">
           <camunda:script scriptFormat="groovy">// Извлекаем текущий шаг из контекста выполнения
