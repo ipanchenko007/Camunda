@@ -1190,11 +1190,12 @@ log.info("PROCESS [{}] ---End Сборка динамического маршр
         <camunda:inputOutput>
           <camunda:inputParameter name="messageCode">NTB0600_APPROVED</camunda:inputParameter>
           <camunda:inputParameter name="addresseeLogins">${initiator}</camunda:inputParameter>
-          <camunda:inputParameter name="properties">${messageProperties}</camunda:inputParameter>
+          <camunda:inputParameter name="properties">
+            <camunda:map>
+              <camunda:entry key="commentText">Процесс завершился без ошибок</camunda:entry>
+            </camunda:map>
+          </camunda:inputParameter>
         </camunda:inputOutput>
-        <camunda:executionListener event="start">
-          <camunda:script scriptFormat="groovy">execution.setVariable('messageProperties', [commentText: 'Сюда добавим комментарий'])</camunda:script>
-        </camunda:executionListener>
       </bpmn:extensionElements>
       <bpmn:incoming>Flow_00ss0x4</bpmn:incoming>
       <bpmn:outgoing>Flow_15tfl2i</bpmn:outgoing>
