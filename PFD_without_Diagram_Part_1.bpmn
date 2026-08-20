@@ -1,0 +1,2500 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<bpmn:definitions xmlns:bpmn="http://www.omg.org/spec/BPMN/20100524/MODEL" xmlns:bpmndi="http://www.omg.org/spec/BPMN/20100524/DI" xmlns:dc="http://www.omg.org/spec/DD/20100524/DC" xmlns:camunda="http://camunda.org/schema/1.0/bpmn" xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance" xmlns:bioc="http://bpmn.io/schema/bpmn/biocolor/1.0" xmlns:color="http://www.omg.org/spec/BPMN/non-normative/color/1.0" xmlns:di="http://www.omg.org/spec/DD/20100524/DI" xmlns:modeler="http://camunda.org/schema/modeler/1.0" id="Definitions_16fk7d4" targetNamespace="http://bpmn.io/schema/bpmn" exporter="Camunda Modeler" exporterVersion="5.31.0" modeler:executionPlatform="Camunda Platform" modeler:executionPlatformVersion="7.22.0">
+  <bpmn:process id="ContainerVerificationProcess_PFD" name="Процесс обработки ПФД" isExecutable="true" camunda:historyTimeToLive="365">
+    <bpmn:documentation>BEEDOCS-5004, BEEDOCS-4947, BEEDOCS-4768, BEEDOCS-4773, BEEDOCS-4162, BEEDOCS-5034, BEEDOCS-5043, BEEDOCS-5035, BEEDOCS-4767, BEEDOCS-5178, BEEDOCS-5442, BEEDOCS-5474, BEEDOCS-4767, BEEDOCS-4793, BEEDOCS-4180, BEEDOCS-5711, BEEDOCS-5886, BEEDOCS-3547, BEEDOCS-6186</bpmn:documentation>
+    <bpmn:exclusiveGateway id="Gateway_1i7u1lh" name="Проверка ЭДО или бумага" default="Flow_1srm35o">
+      <bpmn:incoming>Flow_1s3mfbr</bpmn:incoming>
+      <bpmn:incoming>Flow_0cgpzd4</bpmn:incoming>
+      <bpmn:outgoing>Flow_1srm35o</bpmn:outgoing>
+      <bpmn:outgoing>Flow_0ymc2tf</bpmn:outgoing>
+    </bpmn:exclusiveGateway>
+    <bpmn:exclusiveGateway id="Gateway_0gusr76" name="Проверка наличия согласующих" default="Flow_12sviy5">
+      <bpmn:incoming>Flow_1pa64ay</bpmn:incoming>
+      <bpmn:incoming>Flow_0ye0cdc</bpmn:incoming>
+      <bpmn:outgoing>Flow_12sviy5</bpmn:outgoing>
+    </bpmn:exclusiveGateway>
+    <bpmn:exclusiveGateway id="Gateway_0w2rx1p" default="Flow_1nnof2y">
+      <bpmn:incoming>Flow_152632n</bpmn:incoming>
+      <bpmn:incoming>Flow_0tdou6y</bpmn:incoming>
+      <bpmn:outgoing>Flow_0o7idnp</bpmn:outgoing>
+      <bpmn:outgoing>Flow_1nnof2y</bpmn:outgoing>
+      <bpmn:outgoing>Flow_066nc1k</bpmn:outgoing>
+    </bpmn:exclusiveGateway>
+    <bpmn:sequenceFlow id="Flow_1srm35o" name="Бумага" sourceRef="Gateway_1i7u1lh" targetRef="Event_0y1sm4o" />
+    <bpmn:sequenceFlow id="Flow_0ymc2tf" name="ЭДО" sourceRef="Gateway_1i7u1lh" targetRef="Gateway_0gs9j3e">
+      <bpmn:conditionExpression xsi:type="bpmn:tFormalExpression">${isEDO}</bpmn:conditionExpression>
+    </bpmn:sequenceFlow>
+    <bpmn:sequenceFlow id="Flow_12sviy5" name="DS044_APPROVING" sourceRef="Gateway_0gusr76" targetRef="Event_00pm21v">
+      <bpmn:extensionElements>
+        <camunda:executionListener event="take">
+          <camunda:script scriptFormat="groovy">def statusCode = "DS044_APPROVING"
+
+execution.setVariable("BeeDocs_statusCode", statusCode)</camunda:script>
+        </camunda:executionListener>
+      </bpmn:extensionElements>
+    </bpmn:sequenceFlow>
+    <bpmn:userTask id="Activity_1wq1r4q" name="Скорректировать пакет документов" camunda:asyncBefore="true" camunda:assignee="${initiator}" camunda:dueDate="P30D">
+      <bpmn:documentation>${S(document).prop("data").prop("title").stringValue()}</bpmn:documentation>
+      <bpmn:extensionElements>
+        <camunda:inputOutput>
+          <camunda:inputParameter name="actions">TA043_COMPLETED,TA40_DELETE,TA049_MARK_DOUBLE</camunda:inputParameter>
+        </camunda:inputOutput>
+        <camunda:taskListener delegateExpression="#{userTaskNotificationListener}" event="create">
+          <camunda:field name="messageCode">
+            <camunda:expression>${templateCode}</camunda:expression>
+          </camunda:field>
+          <camunda:field name="addresseeLogins">
+            <camunda:string>initiator</camunda:string>
+          </camunda:field>
+          <camunda:field name="properties">
+            <camunda:expression>${messageProperties}</camunda:expression>
+          </camunda:field>
+        </camunda:taskListener>
+      </bpmn:extensionElements>
+      <bpmn:incoming>Flow_1k0ub15</bpmn:incoming>
+      <bpmn:outgoing>Flow_0rz5ve6</bpmn:outgoing>
+    </bpmn:userTask>
+    <bpmn:scriptTask id="Activity_0h4gdi8" name="Подготовка переменных" scriptFormat="groovy">
+      <bpmn:incoming>Flow_150c8ap</bpmn:incoming>
+      <bpmn:incoming>Flow_1w9s19o</bpmn:incoming>
+      <bpmn:outgoing>Flow_1k0ub15</bpmn:outgoing>
+      <bpmn:script>import static org.camunda.spin.Spin.JSON
+
+def title= S(document).prop("data").prop("title").stringValue();
+def comment = "";
+def dComment = "";
+def dDocs = [];
+def lastComment = lastTaskComment;
+def messageCode = "PACKAGE_USER_TASK_CREATED";
+def alert = "&lt;p&gt;Работа с пакетом будет завершена автоматически через 30 дней, если данная задача не будет закрыта&lt;/p&gt;";
+
+if(execution.hasVariable("isChanged")&amp;&amp;isChanged){
+	alert = alert + "&lt;p color='red'&gt;Во время корректировки был изменен состав документов в закрытом пакете. Состав закрытого пакета менять нельзя&lt;/p&gt;";
+        execution.removeVariable("isChanged");
+}
+
+if(diadocError){
+	dComment = 
+		'&lt;p style="color: red"&gt;По части документов не удалось выполнить подписание/отказ от подписания в диадок (см. комментарий в пакете документов). Обратитесь к администратору, затем выполните задачу, чтобы продолжить работу с пакетом&lt;/p&gt;';	
+}
+//если это частичный отказ
+if(taskOutcome == 'TA010_REJECT' &amp;&amp; !fullRejectBool){
+	def blocks = sOKdocuments.collect { 
+		def link = """&lt;li&gt;&lt;a href="${baseUrl}/document-and-storage/list/user/${it['guid']}/view?tab=base-info"&gt;Документ&lt;/a&gt;&lt;/li&gt;"""
+		return link;
+	}
+
+	comment =
+		'&lt;p style="color: red"&gt;По следующим документам выполнен отказ от подписания:&lt;/p&gt;' +
+		"&lt;ul style='list-style-type: none;'&gt;" +
+		blocks.join("\n") +
+		"&lt;/ul&gt;"
+		;
+	
+	messageCode = "PACKAGE_PROCESSING_PARTIALY_REJECTED";	
+	execution.setVariable('messageProperties', [
+						messageTitle: title, 
+						packageId: entityGuid, 
+						lastTaskComment: lastComment, 
+						rejectComment: comment,
+						diadocComment: dComment,
+						alert: alert])			
+}else{
+	//полный отказ или другое
+	execution.setVariable('messageProperties', [
+							messageTitle: title, 
+							packageId: entityGuid, 
+							lastTaskComment: lastComment,
+							diadocComment: dComment,
+							alert: alert])	
+}
+
+execution.setVariable("templateCode", messageCode)
+//Для задачи согласования
+execution.setVariable("needRework", false)
+execution.setVariable("autoClosed", false)</bpmn:script>
+    </bpmn:scriptTask>
+    <bpmn:sequenceFlow id="Flow_1k0ub15" sourceRef="Activity_0h4gdi8" targetRef="Activity_1wq1r4q" />
+    <bpmn:sequenceFlow id="Flow_0o7idnp" sourceRef="Gateway_0w2rx1p" targetRef="Event_02vw1qh">
+      <bpmn:conditionExpression xsi:type="bpmn:tFormalExpression">${taskOutcome == 'TA015_REWORK'}</bpmn:conditionExpression>
+    </bpmn:sequenceFlow>
+    <bpmn:exclusiveGateway id="Gateway_04b90u7" default="Flow_10e1tnd">
+      <bpmn:incoming>Flow_0o9dymh</bpmn:incoming>
+      <bpmn:incoming>Flow_1ohgska</bpmn:incoming>
+      <bpmn:incoming>Flow_09zeaxg</bpmn:incoming>
+      <bpmn:incoming>Flow_0m58h4k</bpmn:incoming>
+      <bpmn:outgoing>Flow_10e1tnd</bpmn:outgoing>
+    </bpmn:exclusiveGateway>
+    <bpmn:sequenceFlow id="Flow_0rz5ve6" sourceRef="Activity_1wq1r4q" targetRef="Activity_0zjyn7u" />
+    <bpmn:endEvent id="Event_1v8bwlp">
+      <bpmn:incoming>Flow_1tsnpu9</bpmn:incoming>
+      <bpmn:incoming>Flow_1tazbye</bpmn:incoming>
+      <bpmn:terminateEventDefinition id="TerminateEventDefinition_17b3o8t" />
+    </bpmn:endEvent>
+    <bpmn:exclusiveGateway id="Gateway_1mqq09x" name="С доработки" default="Flow_0yxoy7s">
+      <bpmn:incoming>Flow_1etaw0a</bpmn:incoming>
+      <bpmn:outgoing>Flow_180leqd</bpmn:outgoing>
+      <bpmn:outgoing>Flow_0yxoy7s</bpmn:outgoing>
+    </bpmn:exclusiveGateway>
+    <bpmn:sequenceFlow id="Flow_10e1tnd" sourceRef="Gateway_04b90u7" targetRef="Activity_1xdjtis" />
+    <bpmn:sequenceFlow id="Flow_1s93dib" sourceRef="Gateway_0hm1qri" targetRef="Event_0n6wzhe" />
+    <bpmn:scriptTask id="Activity_05zoks4" name="Подготовка переменных" scriptFormat="groovy">
+      <bpmn:incoming>Flow_0rrrg6x</bpmn:incoming>
+      <bpmn:outgoing>Flow_0uks6w0</bpmn:outgoing>
+      <bpmn:script>def title= S(document).prop("data").prop("title").stringValue();
+def lastComment = lastTaskComment;
+
+execution.setVariable('messageProperties', [messageTitle: title, packageId: entityGuid, lastTaskComment: lastComment, diadocComment: '',alert: ''])</bpmn:script>
+    </bpmn:scriptTask>
+    <bpmn:userTask id="Activity_0kz8s7p" name="Предоставить дополнительную информацию" camunda:assignee="${initiator}">
+      <bpmn:documentation>${S(document).prop("data").prop("title").stringValue()}</bpmn:documentation>
+      <bpmn:extensionElements>
+        <camunda:inputOutput>
+          <camunda:inputParameter name="actions">TA046_PROVIDE_COMMENT</camunda:inputParameter>
+        </camunda:inputOutput>
+        <camunda:taskListener delegateExpression="#{userTaskNotificationListener}" event="create">
+          <camunda:field name="messageCode">
+            <camunda:string>PACKAGE_USER_TASK_CREATED</camunda:string>
+          </camunda:field>
+          <camunda:field name="addresseeLogins">
+            <camunda:string>initiator</camunda:string>
+          </camunda:field>
+          <camunda:field name="properties">
+            <camunda:expression>${messageProperties}</camunda:expression>
+          </camunda:field>
+        </camunda:taskListener>
+      </bpmn:extensionElements>
+      <bpmn:incoming>Flow_0uks6w0</bpmn:incoming>
+      <bpmn:outgoing>Flow_1flcv9d</bpmn:outgoing>
+    </bpmn:userTask>
+    <bpmn:sequenceFlow id="Flow_0uks6w0" sourceRef="Activity_05zoks4" targetRef="Activity_0kz8s7p" />
+    <bpmn:exclusiveGateway id="Gateway_0m858j3" name="на запрос комментария">
+      <bpmn:incoming>Flow_0fprn1e</bpmn:incoming>
+      <bpmn:incoming>Flow_05pupei</bpmn:incoming>
+      <bpmn:incoming>Flow_1bpopzz</bpmn:incoming>
+      <bpmn:outgoing>Flow_1oj87ln</bpmn:outgoing>
+    </bpmn:exclusiveGateway>
+    <bpmn:sequenceFlow id="Flow_1oj87ln" name="DS055_COMMENT" sourceRef="Gateway_0m858j3" targetRef="Event_1uktkhc">
+      <bpmn:extensionElements>
+        <camunda:executionListener event="take">
+          <camunda:script scriptFormat="groovy">def statusCode = "DS055_COMMENT"
+
+execution.setVariable("BeeDocs_statusCode", statusCode)</camunda:script>
+        </camunda:executionListener>
+      </bpmn:extensionElements>
+    </bpmn:sequenceFlow>
+    <bpmn:exclusiveGateway id="Gateway_1ianqgi" default="Flow_18uyk9n">
+      <bpmn:incoming>Flow_1flcv9d</bpmn:incoming>
+      <bpmn:outgoing>Flow_18uyk9n</bpmn:outgoing>
+      <bpmn:outgoing>Flow_1jgg49f</bpmn:outgoing>
+    </bpmn:exclusiveGateway>
+    <bpmn:sequenceFlow id="Flow_1flcv9d" sourceRef="Activity_0kz8s7p" targetRef="Gateway_1ianqgi" />
+    <bpmn:exclusiveGateway id="Gateway_039jw56">
+      <bpmn:incoming>Flow_18uyk9n</bpmn:incoming>
+      <bpmn:outgoing>Flow_1x8zers</bpmn:outgoing>
+      <bpmn:outgoing>Flow_1hq3var</bpmn:outgoing>
+      <bpmn:outgoing>Flow_1mvlkpv</bpmn:outgoing>
+      <bpmn:outgoing>Flow_1k8lrp4</bpmn:outgoing>
+    </bpmn:exclusiveGateway>
+    <bpmn:sequenceFlow id="Flow_18uyk9n" sourceRef="Gateway_1ianqgi" targetRef="Gateway_039jw56" />
+    <bpmn:sequenceFlow id="Flow_1x8zers" sourceRef="Gateway_039jw56" targetRef="Event_1fuif8x">
+      <bpmn:conditionExpression xsi:type="bpmn:tFormalExpression">${prevState == "DS044_APPROVING"}</bpmn:conditionExpression>
+    </bpmn:sequenceFlow>
+    <bpmn:exclusiveGateway id="Gateway_0xkfovf" default="Flow_0g931ji">
+      <bpmn:incoming>Flow_1nnof2y</bpmn:incoming>
+      <bpmn:incoming>Flow_0gb8119</bpmn:incoming>
+      <bpmn:outgoing>Flow_0g931ji</bpmn:outgoing>
+    </bpmn:exclusiveGateway>
+    <bpmn:sequenceFlow id="Flow_1nnof2y" sourceRef="Gateway_0w2rx1p" targetRef="Gateway_0xkfovf" />
+    <bpmn:sequenceFlow id="Flow_0g931ji" name="DS045_CONFIRMATION" sourceRef="Gateway_0xkfovf" targetRef="Event_14ndfnv">
+      <bpmn:extensionElements>
+        <camunda:executionListener event="take">
+          <camunda:script scriptFormat="groovy">def statusCode = "DS045_CONFIRMATION"
+
+execution.setVariable("BeeDocs_statusCode", statusCode)</camunda:script>
+        </camunda:executionListener>
+      </bpmn:extensionElements>
+    </bpmn:sequenceFlow>
+    <bpmn:sequenceFlow id="Flow_1hq3var" sourceRef="Gateway_039jw56" targetRef="Event_0jigm6y">
+      <bpmn:conditionExpression xsi:type="bpmn:tFormalExpression">${prevState == "DS045_CONFIRMATION"}</bpmn:conditionExpression>
+    </bpmn:sequenceFlow>
+    <bpmn:exclusiveGateway id="Gateway_1v6c8as" default="Flow_0f57a67">
+      <bpmn:incoming>Flow_026x3ba</bpmn:incoming>
+      <bpmn:incoming>Flow_17f4wo7</bpmn:incoming>
+      <bpmn:outgoing>Flow_07885fh</bpmn:outgoing>
+      <bpmn:outgoing>Flow_0phbacv</bpmn:outgoing>
+      <bpmn:outgoing>Flow_0f57a67</bpmn:outgoing>
+      <bpmn:outgoing>Flow_112kr8i</bpmn:outgoing>
+    </bpmn:exclusiveGateway>
+    <bpmn:sequenceFlow id="Flow_07885fh" sourceRef="Gateway_1v6c8as" targetRef="Event_0kaki9e">
+      <bpmn:conditionExpression xsi:type="bpmn:tFormalExpression">${!diadocError &amp;&amp; taskOutcome == 'TA010_REJECT' &amp;&amp; fullRejectBool=='true'}</bpmn:conditionExpression>
+    </bpmn:sequenceFlow>
+    <bpmn:scriptTask id="Activity_01k4vyo" name="Повторная верификация" scriptFormat="groovy">
+      <bpmn:incoming>Flow_1b2zak2</bpmn:incoming>
+      <bpmn:outgoing>Flow_13pqvoa</bpmn:outgoing>
+      <bpmn:script>execution.setVariable('verificationTaskName',"Повторная верификация");</bpmn:script>
+    </bpmn:scriptTask>
+    <bpmn:exclusiveGateway id="Gateway_1legeec" default="Flow_157afpy">
+      <bpmn:incoming>Flow_1kg3um6</bpmn:incoming>
+      <bpmn:outgoing>Flow_0fprn1e</bpmn:outgoing>
+      <bpmn:outgoing>Flow_0ktixeu</bpmn:outgoing>
+      <bpmn:outgoing>Flow_0m7nuki</bpmn:outgoing>
+      <bpmn:outgoing>Flow_157afpy</bpmn:outgoing>
+      <bpmn:outgoing>Flow_1u4wlay</bpmn:outgoing>
+    </bpmn:exclusiveGateway>
+    <bpmn:sequenceFlow id="Flow_13pqvoa" sourceRef="Activity_01k4vyo" targetRef="Activity_041714z" />
+    <bpmn:sequenceFlow id="Flow_0fprn1e" sourceRef="Gateway_1legeec" targetRef="Gateway_0m858j3">
+      <bpmn:conditionExpression xsi:type="bpmn:tFormalExpression">${taskOutcome == 'TA045_NEED_INFORMATION'}</bpmn:conditionExpression>
+    </bpmn:sequenceFlow>
+    <bpmn:sequenceFlow id="Flow_1mvlkpv" sourceRef="Gateway_039jw56" targetRef="Event_090jso6">
+      <bpmn:conditionExpression xsi:type="bpmn:tFormalExpression">${prevState == "DS016_VERIFICATION"}</bpmn:conditionExpression>
+    </bpmn:sequenceFlow>
+    <bpmn:exclusiveGateway id="Gateway_19qjzks" default="Flow_0iq1gye">
+      <bpmn:incoming>Flow_0ktixeu</bpmn:incoming>
+      <bpmn:incoming>Flow_0svqoa8</bpmn:incoming>
+      <bpmn:incoming>Flow_081uzms</bpmn:incoming>
+      <bpmn:incoming>Flow_196plh6</bpmn:incoming>
+      <bpmn:outgoing>Flow_0iq1gye</bpmn:outgoing>
+    </bpmn:exclusiveGateway>
+    <bpmn:sequenceFlow id="Flow_0iq1gye" name="DS034_REWORK" sourceRef="Gateway_19qjzks" targetRef="Event_0ju95mn">
+      <bpmn:extensionElements>
+        <camunda:executionListener event="take">
+          <camunda:script scriptFormat="groovy">def statusCode = "DS034_REWORK"
+
+execution.setVariable("BeeDocs_statusCode", statusCode)</camunda:script>
+        </camunda:executionListener>
+      </bpmn:extensionElements>
+    </bpmn:sequenceFlow>
+    <bpmn:sequenceFlow id="Flow_0ktixeu" sourceRef="Gateway_1legeec" targetRef="Gateway_19qjzks">
+      <bpmn:conditionExpression xsi:type="bpmn:tFormalExpression">${taskOutcome == 'TA38_SEND_TO_RESCAN'}</bpmn:conditionExpression>
+    </bpmn:sequenceFlow>
+    <bpmn:exclusiveGateway id="Gateway_0ekunrk" default="Flow_0o9dymh">
+      <bpmn:incoming>Flow_1acu1e1</bpmn:incoming>
+      <bpmn:incoming>Flow_12k85lf</bpmn:incoming>
+      <bpmn:outgoing>Flow_1cnu3u4</bpmn:outgoing>
+      <bpmn:outgoing>Flow_05pupei</bpmn:outgoing>
+      <bpmn:outgoing>Flow_0o9dymh</bpmn:outgoing>
+      <bpmn:outgoing>Flow_081uzms</bpmn:outgoing>
+    </bpmn:exclusiveGateway>
+    <bpmn:sequenceFlow id="Flow_1cnu3u4" name="На доработку" sourceRef="Gateway_0ekunrk" targetRef="Event_0p8apql">
+      <bpmn:conditionExpression xsi:type="bpmn:tFormalExpression">${taskOutcome == 'TA015_REWORK'}</bpmn:conditionExpression>
+    </bpmn:sequenceFlow>
+    <bpmn:sequenceFlow id="Flow_05pupei" name="на запрос информации" sourceRef="Gateway_0ekunrk" targetRef="Gateway_0m858j3">
+      <bpmn:conditionExpression xsi:type="bpmn:tFormalExpression">${taskOutcome == 'TA045_NEED_INFORMATION'}</bpmn:conditionExpression>
+    </bpmn:sequenceFlow>
+    <bpmn:sequenceFlow id="Flow_0o9dymh" sourceRef="Gateway_0ekunrk" targetRef="Gateway_04b90u7" />
+    <bpmn:exclusiveGateway id="Gateway_0zhc913" name="возврат на предыдущий статус">
+      <bpmn:incoming>Flow_1jgg49f</bpmn:incoming>
+      <bpmn:outgoing>Flow_0svqoa8</bpmn:outgoing>
+      <bpmn:outgoing>Flow_01n07wn</bpmn:outgoing>
+    </bpmn:exclusiveGateway>
+    <bpmn:sequenceFlow id="Flow_1jgg49f" sourceRef="Gateway_1ianqgi" targetRef="Gateway_0zhc913">
+      <bpmn:conditionExpression xsi:type="bpmn:tFormalExpression">${prevState == "RESCAN" || prevState == "CORRECT_ZP"}</bpmn:conditionExpression>
+    </bpmn:sequenceFlow>
+    <bpmn:sequenceFlow id="Flow_0svqoa8" sourceRef="Gateway_0zhc913" targetRef="Gateway_19qjzks">
+      <bpmn:conditionExpression xsi:type="bpmn:tFormalExpression">${prevState == "RESCAN"}</bpmn:conditionExpression>
+    </bpmn:sequenceFlow>
+    <bpmn:userTask id="Activity_1ts5wux" name="Пересканировать документы" camunda:asyncBefore="true" camunda:candidateGroups="RL022_SCANNER" camunda:dueDate="#{extensions.timeService.calculateDueDate(2, 0, 0)}">
+      <bpmn:documentation>${S(document).prop("data").prop("title").stringValue()}</bpmn:documentation>
+      <bpmn:extensionElements>
+        <camunda:inputOutput>
+          <camunda:inputParameter name="actions">TA043_COMPLETED,TA045_NEED_INFORMATION</camunda:inputParameter>
+        </camunda:inputOutput>
+      </bpmn:extensionElements>
+      <bpmn:incoming>Flow_01h3bbr</bpmn:incoming>
+      <bpmn:outgoing>Flow_12k85lf</bpmn:outgoing>
+    </bpmn:userTask>
+    <bpmn:scriptTask id="Activity_1el5qxo" name="Подготовка переменных" scriptFormat="groovy">
+      <bpmn:incoming>Flow_0aaw7c5</bpmn:incoming>
+      <bpmn:outgoing>Flow_01h3bbr</bpmn:outgoing>
+      <bpmn:script>def title= S(document).prop("data").prop("title").stringValue();
+def lastComment = lastTaskComment;
+
+execution.setVariable('messageProperties', [messageTitle: title, packageId: entityGuid, lastTaskComment: lastComment, diadocComment: '', alert: '']);
+
+execution.setVariable('prevState','RESCAN');</bpmn:script>
+    </bpmn:scriptTask>
+    <bpmn:sequenceFlow id="Flow_01h3bbr" sourceRef="Activity_1el5qxo" targetRef="Activity_1ts5wux" />
+    <bpmn:sequenceFlow id="Flow_12k85lf" sourceRef="Activity_1ts5wux" targetRef="Gateway_0ekunrk" />
+    <bpmn:userTask id="Activity_0nja24y" name="${zpTaskName}" camunda:asyncBefore="true" camunda:candidateGroups="RL023_PURCHASES" camunda:dueDate="#{extensions.timeService.calculateDueDate(2, 0, 0)}">
+      <bpmn:documentation>${S(document).prop("data").prop("title").stringValue()}</bpmn:documentation>
+      <bpmn:extensionElements>
+        <camunda:inputOutput>
+          <camunda:inputParameter name="actions">${userActions}</camunda:inputParameter>
+        </camunda:inputOutput>
+      </bpmn:extensionElements>
+      <bpmn:incoming>Flow_1wc9j8d</bpmn:incoming>
+      <bpmn:outgoing>Flow_08a2rcy</bpmn:outgoing>
+    </bpmn:userTask>
+    <bpmn:scriptTask id="Activity_19f4snx" name="Подготовка переменных" scriptFormat="groovy">
+      <bpmn:incoming>Flow_1f6c5hi</bpmn:incoming>
+      <bpmn:outgoing>Flow_029v8dl</bpmn:outgoing>
+      <bpmn:script>def title= S(document).prop("data").prop("title").stringValue();
+def lastComment = lastTaskComment;
+
+execution.setVariable('messageProperties', [messageTitle: title, packageId: entityGuid, lastTaskComment: lastComment, diadocComment: '', alert: '']);
+
+//блок определения кнопок для этапа Верификация
+def actions = "TA015_REWORK,TA044_VERIFICATION_PFD,TA37_SEND_FOR_PAYMENT,TA045_NEED_INFORMATION,TA050_CHANGE_DETAILS_PFD";
+
+if (!isEDO)
+    actions = actions +",TA38_SEND_TO_RESCAN";
+
+execution.setVariable('userActions', actions);	
+//---
+
+execution.setVariable('prevState','CORRECT_ZP');
+
+execution.setVariable('prevRole','RL023_PURCHASES');</bpmn:script>
+    </bpmn:scriptTask>
+    <bpmn:sequenceFlow id="Flow_029v8dl" sourceRef="Activity_19f4snx" targetRef="Activity_179zzvu" />
+    <bpmn:exclusiveGateway id="Gateway_1mu7ep3">
+      <bpmn:incoming>Flow_0m7nuki</bpmn:incoming>
+      <bpmn:incoming>Flow_0xrjmts</bpmn:incoming>
+      <bpmn:incoming>Flow_01n07wn</bpmn:incoming>
+      <bpmn:incoming>Flow_1wh7sgq</bpmn:incoming>
+      <bpmn:outgoing>Flow_1354lti</bpmn:outgoing>
+    </bpmn:exclusiveGateway>
+    <bpmn:sequenceFlow id="Flow_1354lti" sourceRef="Gateway_1mu7ep3" targetRef="Gateway_1tgrf6i" />
+    <bpmn:sequenceFlow id="Flow_08a2rcy" sourceRef="Activity_0nja24y" targetRef="Gateway_015nzwl" />
+    <bpmn:sequenceFlow id="Flow_081uzms" name="На пересканирование" sourceRef="Gateway_0ekunrk" targetRef="Gateway_19qjzks">
+      <bpmn:conditionExpression xsi:type="bpmn:tFormalExpression">${taskOutcome == 'TA38_SEND_TO_RESCAN'}</bpmn:conditionExpression>
+    </bpmn:sequenceFlow>
+    <bpmn:sequenceFlow id="Flow_0m7nuki" sourceRef="Gateway_1legeec" targetRef="Gateway_1mu7ep3">
+      <bpmn:conditionExpression xsi:type="bpmn:tFormalExpression">${taskOutcome == 'TA39_CORRECT_ZP'}</bpmn:conditionExpression>
+    </bpmn:sequenceFlow>
+    <bpmn:sequenceFlow id="Flow_157afpy" sourceRef="Gateway_1legeec" targetRef="Gateway_0ivpon7" />
+    <bpmn:exclusiveGateway id="Gateway_0ra96w3" default="Flow_1996o4z">
+      <bpmn:incoming>Flow_1rrclqh</bpmn:incoming>
+      <bpmn:outgoing>Flow_1bpopzz</bpmn:outgoing>
+      <bpmn:outgoing>Flow_196plh6</bpmn:outgoing>
+      <bpmn:outgoing>Flow_0xrjmts</bpmn:outgoing>
+      <bpmn:outgoing>Flow_1996o4z</bpmn:outgoing>
+      <bpmn:outgoing>Flow_0sr3yys</bpmn:outgoing>
+    </bpmn:exclusiveGateway>
+    <bpmn:sequenceFlow id="Flow_1bpopzz" sourceRef="Gateway_0ra96w3" targetRef="Gateway_0m858j3">
+      <bpmn:conditionExpression xsi:type="bpmn:tFormalExpression">${taskOutcome == 'TA045_NEED_INFORMATION'}</bpmn:conditionExpression>
+    </bpmn:sequenceFlow>
+    <bpmn:sequenceFlow id="Flow_196plh6" sourceRef="Gateway_0ra96w3" targetRef="Gateway_19qjzks">
+      <bpmn:conditionExpression xsi:type="bpmn:tFormalExpression">${taskOutcome == 'TA38_SEND_TO_RESCAN'}</bpmn:conditionExpression>
+    </bpmn:sequenceFlow>
+    <bpmn:sequenceFlow id="Flow_0xrjmts" sourceRef="Gateway_0ra96w3" targetRef="Gateway_1mu7ep3">
+      <bpmn:conditionExpression xsi:type="bpmn:tFormalExpression">${taskOutcome == 'TA39_CORRECT_ZP'}</bpmn:conditionExpression>
+    </bpmn:sequenceFlow>
+    <bpmn:exclusiveGateway id="Gateway_1qes6we" default="Flow_0cxn5p5">
+      <bpmn:incoming>Flow_1996o4z</bpmn:incoming>
+      <bpmn:outgoing>Flow_0cxn5p5</bpmn:outgoing>
+      <bpmn:outgoing>Flow_1x1uczq</bpmn:outgoing>
+    </bpmn:exclusiveGateway>
+    <bpmn:sequenceFlow id="Flow_1996o4z" sourceRef="Gateway_0ra96w3" targetRef="Gateway_1qes6we" />
+    <bpmn:endEvent id="Event_1gii9to">
+      <bpmn:incoming>Flow_133e1wu</bpmn:incoming>
+    </bpmn:endEvent>
+    <bpmn:serviceTask id="Activity_0962ttc" name="Отправка уведомления инициатору о завершении" camunda:asyncBefore="true" camunda:delegateExpression="#{notificationSender}">
+      <bpmn:extensionElements>
+        <camunda:inputOutput>
+          <camunda:inputParameter name="messageCode">PACKAGE_PROCESSING_ENDED</camunda:inputParameter>
+          <camunda:inputParameter name="addresseeLogins">${initiator}</camunda:inputParameter>
+          <camunda:inputParameter name="properties">
+            <camunda:map>
+              <camunda:entry key="packageId">${entityGuid}</camunda:entry>
+              <camunda:entry key="messageTitle">${S(document).prop("data").prop("title").stringValue()}</camunda:entry>
+            </camunda:map>
+          </camunda:inputParameter>
+        </camunda:inputOutput>
+      </bpmn:extensionElements>
+      <bpmn:incoming>Flow_1qbsqyp</bpmn:incoming>
+      <bpmn:outgoing>Flow_133e1wu</bpmn:outgoing>
+    </bpmn:serviceTask>
+    <bpmn:sequenceFlow id="Flow_133e1wu" sourceRef="Activity_0962ttc" targetRef="Event_1gii9to" />
+    <bpmn:sequenceFlow id="Flow_0cxn5p5" sourceRef="Gateway_1qes6we" targetRef="Event_0bhv65u" />
+    <bpmn:sequenceFlow id="Flow_01n07wn" sourceRef="Gateway_0zhc913" targetRef="Gateway_1mu7ep3">
+      <bpmn:conditionExpression xsi:type="bpmn:tFormalExpression">${prevState == "CORRECT_ZP"}</bpmn:conditionExpression>
+    </bpmn:sequenceFlow>
+    <bpmn:sequenceFlow id="Flow_1k8lrp4" sourceRef="Gateway_039jw56" targetRef="Event_1kgiqfx">
+      <bpmn:conditionExpression xsi:type="bpmn:tFormalExpression">${prevState == "DS039_EXECUTION"}</bpmn:conditionExpression>
+    </bpmn:sequenceFlow>
+    <bpmn:subProcess id="Activity_0xd3iuh" name="Отмена процессса" triggeredByEvent="true">
+      <bpmn:startEvent id="Event_0uls05e" name="Событие отмены процесса">
+        <bpmn:outgoing>Flow_0t2s4b7</bpmn:outgoing>
+        <bpmn:messageEventDefinition id="MessageEventDefinition_0zaoagn" messageRef="Message_3sugidn" />
+      </bpmn:startEvent>
+      <bpmn:endEvent id="Event_0w45sy9">
+        <bpmn:incoming>Flow_0dfv7b1</bpmn:incoming>
+      </bpmn:endEvent>
+      <bpmn:sequenceFlow id="Flow_0t2s4b7" sourceRef="Event_0uls05e" targetRef="Gateway_0kppkur" />
+      <bpmn:serviceTask id="Activity_0q960l4" name="Запрос атрибутов документа" camunda:asyncBefore="true" camunda:delegateExpression="#{restClient}">
+        <bpmn:extensionElements>
+          <camunda:inputOutput>
+            <camunda:inputParameter name="serviceName">documents</camunda:inputParameter>
+            <camunda:inputParameter name="path">private/documents/{guid}</camunda:inputParameter>
+            <camunda:inputParameter name="pathParams">
+              <camunda:map>
+                <camunda:entry key="guid">${entityGuid}</camunda:entry>
+              </camunda:map>
+            </camunda:inputParameter>
+            <camunda:inputParameter name="method">GET</camunda:inputParameter>
+            <camunda:inputParameter name="resultVarName">document</camunda:inputParameter>
+          </camunda:inputOutput>
+          <camunda:failedJobRetryTimeCycle />
+        </bpmn:extensionElements>
+        <bpmn:incoming>Flow_1h0vqr0</bpmn:incoming>
+        <bpmn:outgoing>Flow_0fffcg4</bpmn:outgoing>
+      </bpmn:serviceTask>
+      <bpmn:sequenceFlow id="Flow_0fffcg4" sourceRef="Activity_0q960l4" targetRef="Activity_0n2jcz5" />
+      <bpmn:scriptTask id="Activity_0xj0h2k" name="Обработка результата" camunda:asyncBefore="true" scriptFormat="groovy">
+        <bpmn:incoming>Flow_03hz70n</bpmn:incoming>
+        <bpmn:outgoing>Flow_1h0vqr0</bpmn:outgoing>
+        <bpmn:script>import java.util.logging.Logger
+
+Logger logger = Logger.getLogger("PFD_CANCEL_LOG")
+logger.info ("start processId: "+execution.getProcessInstanceId())
+</bpmn:script>
+      </bpmn:scriptTask>
+      <bpmn:sequenceFlow id="Flow_1h0vqr0" sourceRef="Activity_0xj0h2k" targetRef="Activity_0q960l4" />
+      <bpmn:scriptTask id="Activity_0n2jcz5" name="Обработка результата" camunda:asyncBefore="true" scriptFormat="groovy">
+        <bpmn:incoming>Flow_0fffcg4</bpmn:incoming>
+        <bpmn:outgoing>Flow_1gtcn1a</bpmn:outgoing>
+        <bpmn:script>import java.util.logging.Logger
+
+Logger logger = Logger.getLogger("PFD_CANCEL_LOG")
+logger.info ("set status: "+entityGuid+" processId: "+execution.getProcessInstanceId())
+</bpmn:script>
+      </bpmn:scriptTask>
+      <bpmn:scriptTask id="Activity_1mz1zh3" name="Обработка результата" camunda:asyncBefore="true" scriptFormat="groovy">
+        <bpmn:incoming>Flow_0pcoyu8</bpmn:incoming>
+        <bpmn:outgoing>Flow_09uxvdj</bpmn:outgoing>
+        <bpmn:script>import java.util.logging.Logger
+
+Logger logger = Logger.getLogger("PFD_CANCEL_LOG")
+logger.info ("get relations: "+entityGuid+" processId: "+execution.getProcessInstanceId())
+</bpmn:script>
+      </bpmn:scriptTask>
+      <bpmn:sequenceFlow id="Flow_09uxvdj" sourceRef="Activity_1mz1zh3" targetRef="Activity_06khg76" />
+      <bpmn:scriptTask id="Activity_0k1kik7" name="Обработка результата" camunda:asyncBefore="true" scriptFormat="groovy">
+        <bpmn:incoming>Flow_1n2afk6</bpmn:incoming>
+        <bpmn:outgoing>Flow_1dc7v66</bpmn:outgoing>
+        <bpmn:script>import java.util.logging.Logger
+
+Logger logger = Logger.getLogger("PFD_CANCEL_LOG")
+logger.info ("relations set status processId: "+execution.getProcessInstanceId())
+</bpmn:script>
+      </bpmn:scriptTask>
+      <bpmn:sequenceFlow id="Flow_1dc7v66" sourceRef="Activity_0k1kik7" targetRef="Activity_0yxsj8d" />
+      <bpmn:serviceTask id="Activity_1bc7nm3" name="Установка статуса документа &#34;Создан&#34;" camunda:asyncBefore="true" camunda:delegateExpression="#{restClient}">
+        <bpmn:extensionElements>
+          <camunda:inputOutput>
+            <camunda:inputParameter name="serviceName">documents</camunda:inputParameter>
+            <camunda:inputParameter name="path">private/documents/{guid}/_status</camunda:inputParameter>
+            <camunda:inputParameter name="pathParams">
+              <camunda:map>
+                <camunda:entry key="guid">${entityGuid}</camunda:entry>
+              </camunda:map>
+            </camunda:inputParameter>
+            <camunda:inputParameter name="method">PUT</camunda:inputParameter>
+            <camunda:inputParameter name="body">
+              <camunda:map>
+                <camunda:entry key="statusCode">DS038_CREATED</camunda:entry>
+              </camunda:map>
+            </camunda:inputParameter>
+          </camunda:inputOutput>
+        </bpmn:extensionElements>
+        <bpmn:incoming>Flow_1gtcn1a</bpmn:incoming>
+        <bpmn:outgoing>Flow_0pcoyu8</bpmn:outgoing>
+      </bpmn:serviceTask>
+      <bpmn:sequenceFlow id="Flow_1gtcn1a" sourceRef="Activity_0n2jcz5" targetRef="Activity_1bc7nm3" />
+      <bpmn:sequenceFlow id="Flow_0pcoyu8" sourceRef="Activity_1bc7nm3" targetRef="Activity_1mz1zh3" />
+      <bpmn:serviceTask id="Activity_06khg76" name="Запрос связанных документов" camunda:delegateExpression="#{restClient}">
+        <bpmn:extensionElements>
+          <camunda:inputOutput>
+            <camunda:inputParameter name="serviceName">documents</camunda:inputParameter>
+            <camunda:inputParameter name="path">private/documents/{guid}/relations</camunda:inputParameter>
+            <camunda:inputParameter name="pathParams">
+              <camunda:map>
+                <camunda:entry key="guid">${entityGuid}</camunda:entry>
+              </camunda:map>
+            </camunda:inputParameter>
+            <camunda:inputParameter name="method">GET</camunda:inputParameter>
+            <camunda:inputParameter name="resultVarName">documents</camunda:inputParameter>
+          </camunda:inputOutput>
+        </bpmn:extensionElements>
+        <bpmn:incoming>Flow_09uxvdj</bpmn:incoming>
+        <bpmn:outgoing>Flow_0esu1l2</bpmn:outgoing>
+      </bpmn:serviceTask>
+      <bpmn:sequenceFlow id="Flow_0esu1l2" sourceRef="Activity_06khg76" targetRef="Activity_0388dvq" />
+      <bpmn:scriptTask id="Activity_0zbn8qo" name="Фильтр документов по связи" scriptFormat="groovy">
+        <bpmn:incoming>Flow_0hgu8ie</bpmn:incoming>
+        <bpmn:outgoing>Flow_0l2gcyo</bpmn:outgoing>
+        <bpmn:script>import groovy.json.JsonSlurper
+import groovy.json.JsonOutput
+import org.camunda.spin.Spin
+import org.camunda.spin.json.SpinJsonNode
+import com.fasterxml.jackson.databind.ObjectMapper
+
+// Преобразуем SpinJsonNode в объект Groovy
+def json = new JsonSlurper().parseText(documents.toString())
+
+// Фильтруем только элементы с relationCode == "PACKAGE". Запоминаем guid и тип для BEEDOCS-4947
+def mappedDocs = json.data.findAll { it.relationCode == "PACKAGE" }.collect { item -&gt;
+    [
+		guid: item.targetGuid,
+		docType: item.targetType
+	]
+}
+// Сохраняем в процесс (строкой)
+execution.setVariable("docsWithType", mappedDocs);
+//для использования в multi-instance оставим только guid
+docs = mappedDocs.collect { item -&gt;
+    [
+		guid: item.guid
+	]
+}
+
+execution.setVariable("documents", docs);
+//для использования в expanded sub process
+ObjectMapper objectMapper = new ObjectMapper();
+execution.setVariable("packageDocuments", objectMapper.writeValueAsString(mappedDocs));
+
+mappedDocs = json.data.findAll { it.relationCode == "BASE_DOCUMENT" }.collect { item -&gt;
+    [guid: item.targetGuid]
+}
+
+execution.setVariable("baseDocuments", mappedDocs)
+execution.setVariable("baseDocumentsStr", objectMapper.writeValueAsString(mappedDocs))
+
+</bpmn:script>
+      </bpmn:scriptTask>
+      <bpmn:scriptTask id="Activity_0388dvq" name="Обработка результата" scriptFormat="groovy">
+        <bpmn:incoming>Flow_0esu1l2</bpmn:incoming>
+        <bpmn:outgoing>Flow_0hgu8ie</bpmn:outgoing>
+        <bpmn:script>import java.util.logging.Logger
+
+Logger logger = Logger.getLogger("PFD_CANCEL_LOG")
+logger.info ("get relations: "+entityGuid+" processId: "+execution.getProcessInstanceId())
+</bpmn:script>
+      </bpmn:scriptTask>
+      <bpmn:sequenceFlow id="Flow_0hgu8ie" sourceRef="Activity_0388dvq" targetRef="Activity_0zbn8qo" />
+      <bpmn:sequenceFlow id="Flow_0l2gcyo" sourceRef="Activity_0zbn8qo" targetRef="Activity_1g4j6q3" />
+      <bpmn:serviceTask id="Activity_1g4j6q3" name="Установка статуса &#34;Создан&#34;" camunda:delegateExpression="#{restClient}">
+        <bpmn:extensionElements>
+          <camunda:inputOutput>
+            <camunda:inputParameter name="serviceName">documents</camunda:inputParameter>
+            <camunda:inputParameter name="path">private/documents/{guid}/_status</camunda:inputParameter>
+            <camunda:inputParameter name="method">PUT</camunda:inputParameter>
+            <camunda:inputParameter name="body">
+              <camunda:map>
+                <camunda:entry key="statusCode">DS038_CREATED</camunda:entry>
+              </camunda:map>
+            </camunda:inputParameter>
+          </camunda:inputOutput>
+        </bpmn:extensionElements>
+        <bpmn:incoming>Flow_0l2gcyo</bpmn:incoming>
+        <bpmn:outgoing>Flow_1n2afk6</bpmn:outgoing>
+        <bpmn:multiInstanceLoopCharacteristics isSequential="true" camunda:collection="documents" camunda:elementVariable="pathParams">
+          <bpmn:extensionElements>
+            <camunda:failedJobRetryTimeCycle />
+          </bpmn:extensionElements>
+        </bpmn:multiInstanceLoopCharacteristics>
+      </bpmn:serviceTask>
+      <bpmn:sequenceFlow id="Flow_1n2afk6" sourceRef="Activity_1g4j6q3" targetRef="Activity_0k1kik7" />
+      <bpmn:serviceTask id="Activity_0yxsj8d" name="Удаление связи пакета с документом-основанием" camunda:delegateExpression="#{restClient}">
+        <bpmn:extensionElements>
+          <camunda:inputOutput>
+            <camunda:inputParameter name="serviceName">documents</camunda:inputParameter>
+            <camunda:inputParameter name="path">private/documents/${entityGuid}/relations/{guid}</camunda:inputParameter>
+            <camunda:inputParameter name="method">DELETE</camunda:inputParameter>
+          </camunda:inputOutput>
+        </bpmn:extensionElements>
+        <bpmn:incoming>Flow_1dc7v66</bpmn:incoming>
+        <bpmn:outgoing>Flow_1q9c3st</bpmn:outgoing>
+        <bpmn:multiInstanceLoopCharacteristics isSequential="true" camunda:asyncBefore="true" camunda:collection="baseDocuments" camunda:elementVariable="pathParams" />
+      </bpmn:serviceTask>
+      <bpmn:sequenceFlow id="Flow_1q9c3st" sourceRef="Activity_0yxsj8d" targetRef="Activity_05tkgg5" />
+      <bpmn:scriptTask id="Activity_05tkgg5" name="Обработка результата" camunda:asyncBefore="true" scriptFormat="groovy">
+        <bpmn:incoming>Flow_1q9c3st</bpmn:incoming>
+        <bpmn:outgoing>Flow_0dfv7b1</bpmn:outgoing>
+        <bpmn:script>import java.util.logging.Logger
+
+Logger logger = Logger.getLogger("PFD_CANCEL_LOG")
+logger.info ("base documents deleted processId: "+execution.getProcessInstanceId())
+</bpmn:script>
+      </bpmn:scriptTask>
+      <bpmn:sequenceFlow id="Flow_0dfv7b1" sourceRef="Activity_05tkgg5" targetRef="Event_0w45sy9" />
+      <bpmn:exclusiveGateway id="Gateway_0kppkur" default="Flow_03hz70n">
+        <bpmn:incoming>Flow_0t2s4b7</bpmn:incoming>
+        <bpmn:outgoing>Flow_03hz70n</bpmn:outgoing>
+        <bpmn:outgoing>Flow_0ocfuqe</bpmn:outgoing>
+      </bpmn:exclusiveGateway>
+      <bpmn:sequenceFlow id="Flow_03hz70n" sourceRef="Gateway_0kppkur" targetRef="Activity_0xj0h2k" />
+      <bpmn:endEvent id="Event_1xny7r7">
+        <bpmn:incoming>Flow_0ocfuqe</bpmn:incoming>
+      </bpmn:endEvent>
+      <bpmn:sequenceFlow id="Flow_0ocfuqe" sourceRef="Gateway_0kppkur" targetRef="Event_1xny7r7">
+        <bpmn:conditionExpression xsi:type="bpmn:tFormalExpression">${revocationCanselPack}</bpmn:conditionExpression>
+      </bpmn:sequenceFlow>
+    </bpmn:subProcess>
+    <bpmn:sequenceFlow id="Flow_0c3l9yx" sourceRef="Gateway_0gs9j3e" targetRef="Gateway_017ooq9" />
+    <bpmn:exclusiveGateway id="Gateway_0gs9j3e" default="Flow_0c3l9yx">
+      <bpmn:incoming>Flow_0ymc2tf</bpmn:incoming>
+      <bpmn:incoming>Flow_04aapk1</bpmn:incoming>
+      <bpmn:incoming>Flow_1nqpshn</bpmn:incoming>
+      <bpmn:incoming>Flow_04894dq</bpmn:incoming>
+      <bpmn:outgoing>Flow_1djouw2</bpmn:outgoing>
+      <bpmn:outgoing>Flow_0c3l9yx</bpmn:outgoing>
+    </bpmn:exclusiveGateway>
+    <bpmn:sequenceFlow id="Flow_1djouw2" name="DS034_REWORK" sourceRef="Gateway_0gs9j3e" targetRef="Event_0njhdsh">
+      <bpmn:extensionElements>
+        <camunda:executionListener event="take">
+          <camunda:script scriptFormat="groovy">def statusCode = "DS034_REWORK"
+
+execution.setVariable("BeeDocs_statusCode", statusCode)</camunda:script>
+        </camunda:executionListener>
+      </bpmn:extensionElements>
+      <bpmn:conditionExpression xsi:type="bpmn:tFormalExpression">${signatory=='' &amp;&amp; !allInExceptions}</bpmn:conditionExpression>
+    </bpmn:sequenceFlow>
+    <bpmn:exclusiveGateway id="Gateway_017ooq9" default="Flow_1pa64ay">
+      <bpmn:incoming>Flow_0c3l9yx</bpmn:incoming>
+      <bpmn:outgoing>Flow_1pa64ay</bpmn:outgoing>
+      <bpmn:outgoing>Flow_152632n</bpmn:outgoing>
+    </bpmn:exclusiveGateway>
+    <bpmn:sequenceFlow id="Flow_1pa64ay" name="Согласующие есть" sourceRef="Gateway_017ooq9" targetRef="Gateway_0gusr76" />
+    <bpmn:sequenceFlow id="Flow_152632n" name="Согласующих нет" sourceRef="Gateway_017ooq9" targetRef="Gateway_0w2rx1p">
+      <bpmn:conditionExpression xsi:type="bpmn:tFormalExpression">${approvers==null||approvers.isEmpty()}</bpmn:conditionExpression>
+    </bpmn:sequenceFlow>
+    <bpmn:serviceTask id="Activity_041714z" name="Запрос атрибутов документа" camunda:asyncBefore="true" camunda:delegateExpression="#{restClient}">
+      <bpmn:extensionElements>
+        <camunda:inputOutput>
+          <camunda:inputParameter name="serviceName">documents</camunda:inputParameter>
+          <camunda:inputParameter name="path">private/documents/{guid}</camunda:inputParameter>
+          <camunda:inputParameter name="pathParams">
+            <camunda:map>
+              <camunda:entry key="guid">${entityGuid}</camunda:entry>
+            </camunda:map>
+          </camunda:inputParameter>
+          <camunda:inputParameter name="method">GET</camunda:inputParameter>
+          <camunda:inputParameter name="resultVarName">document</camunda:inputParameter>
+        </camunda:inputOutput>
+      </bpmn:extensionElements>
+      <bpmn:incoming>Flow_13pqvoa</bpmn:incoming>
+      <bpmn:outgoing>Flow_0psohj6</bpmn:outgoing>
+    </bpmn:serviceTask>
+    <bpmn:sequenceFlow id="Flow_0psohj6" sourceRef="Activity_041714z" targetRef="Activity_1k5gyif" />
+    <bpmn:exclusiveGateway id="Gateway_1cso7vm" default="Flow_07sdpmb">
+      <bpmn:incoming>Flow_0wtasp9</bpmn:incoming>
+      <bpmn:incoming>Flow_0igz1qf</bpmn:incoming>
+      <bpmn:incoming>Flow_12frvp6</bpmn:incoming>
+      <bpmn:outgoing>Flow_07sdpmb</bpmn:outgoing>
+    </bpmn:exclusiveGateway>
+    <bpmn:sequenceFlow id="Flow_07sdpmb" sourceRef="Gateway_1cso7vm" targetRef="Gateway_0ophzmz" />
+    <bpmn:exclusiveGateway id="Gateway_0ovjhng" default="Flow_1s3mfbr">
+      <bpmn:incoming>Flow_05ga8qw</bpmn:incoming>
+      <bpmn:incoming>Flow_1nik9e8</bpmn:incoming>
+      <bpmn:outgoing>Flow_0j3wqvl</bpmn:outgoing>
+      <bpmn:outgoing>Flow_1s3mfbr</bpmn:outgoing>
+    </bpmn:exclusiveGateway>
+    <bpmn:sequenceFlow id="Flow_0j3wqvl" name="Были дубли. надо проверить, удалил ли инициатор связь с дублем" sourceRef="Gateway_0ovjhng" targetRef="Activity_0m3b4hl">
+      <bpmn:conditionExpression xsi:type="bpmn:tFormalExpression">${findDuplicate}</bpmn:conditionExpression>
+    </bpmn:sequenceFlow>
+    <bpmn:scriptTask id="Activity_17irr9s" name="Подготовка переменных" scriptFormat="groovy">
+      <bpmn:incoming>Flow_0w5k2vh</bpmn:incoming>
+      <bpmn:outgoing>Flow_0zhlgpq</bpmn:outgoing>
+      <bpmn:script>def title= S(document).prop("data").prop("title").stringValue();
+def lastComment="";
+if(execution.hasVariable("lastTaskComment")){
+   lastComment = lastTaskComment;
+}
+
+execution.setVariable('messageProperties', [messageTitle: title, packageId: entityGuid, lastTaskComment: lastComment, diadocComment: '', alert: '']);
+
+//блок определения кнопок для этапа Подписать документ
+def actions = "TA010_REJECT,TA015_REWORK";
+def outcome = execution.getVariable("taskOutcome");
+if (outcome != 'TA051_REJECT_REQUEST_PFD')
+    actions = actions +",TA009_SIGN";
+
+execution.setVariable('userActions', actions);		
+//---
+//execution.setVariable('signatory', 'ekatvlaivanova')
+
+//Определение наименования задачи подписания
+def folderCode = execution.getVariable("EDF_PROCESSING_FOLDER_CODE")
+
+if (folderCode != null) {
+    switch (folderCode.toString()) {
+        case "READY_FOR_SIGNATURE":
+            execution.setVariable("signTaskName", "Подписать документы без дополнительных проверок")
+            break
+        case "CHECK_BEFORE_SIGNATURE":
+            execution.setVariable("signTaskName", "Необходима дополнительная проверка перед подписанием")
+            break
+        case "ENERGY_MANAGER":
+            execution.setVariable("signTaskName", "Необходимо согласование с энергетиком перед подписанием")
+            break
+    }
+}</bpmn:script>
+    </bpmn:scriptTask>
+    <bpmn:sequenceFlow id="Flow_0zhlgpq" sourceRef="Activity_17irr9s" targetRef="Gateway_03bf0mp" />
+    <bpmn:serviceTask id="Activity_0v2hsio" name="Запрос атрибутов документа" camunda:asyncBefore="true" camunda:delegateExpression="#{restClient}">
+      <bpmn:extensionElements>
+        <camunda:inputOutput>
+          <camunda:inputParameter name="serviceName">documents</camunda:inputParameter>
+          <camunda:inputParameter name="path">private/documents/{guid}</camunda:inputParameter>
+          <camunda:inputParameter name="pathParams">
+            <camunda:map>
+              <camunda:entry key="guid">${entityGuid}</camunda:entry>
+            </camunda:map>
+          </camunda:inputParameter>
+          <camunda:inputParameter name="method">GET</camunda:inputParameter>
+          <camunda:inputParameter name="resultVarName">document</camunda:inputParameter>
+        </camunda:inputOutput>
+      </bpmn:extensionElements>
+      <bpmn:incoming>Flow_1rg9rn1</bpmn:incoming>
+      <bpmn:incoming>Flow_1r3tg8j</bpmn:incoming>
+      <bpmn:outgoing>Flow_10vchwq</bpmn:outgoing>
+    </bpmn:serviceTask>
+    <bpmn:sequenceFlow id="Flow_10vchwq" sourceRef="Activity_0v2hsio" targetRef="Gateway_0p6rxyu" />
+    <bpmn:subProcess id="Activity_1vv665q" name="Последовательный цикл по изменению статусов">
+      <bpmn:incoming>Flow_07xhk37</bpmn:incoming>
+      <bpmn:outgoing>Flow_05ga8qw</bpmn:outgoing>
+      <bpmn:multiInstanceLoopCharacteristics isSequential="true" camunda:collection="${S(packageDocuments).elements()}" camunda:elementVariable="document" />
+      <bpmn:startEvent id="Event_1svr8he">
+        <bpmn:outgoing>Flow_044hb1w</bpmn:outgoing>
+      </bpmn:startEvent>
+      <bpmn:endEvent id="Event_1xl0ika">
+        <bpmn:incoming>Flow_1mwdb6o</bpmn:incoming>
+      </bpmn:endEvent>
+      <bpmn:subProcess id="Activity_1ohumui" name="Цикл по установке связей с документом-основанием">
+        <bpmn:incoming>Flow_044hb1w</bpmn:incoming>
+        <bpmn:outgoing>Flow_1mwdb6o</bpmn:outgoing>
+        <bpmn:multiInstanceLoopCharacteristics isSequential="true" camunda:collection="${S(baseDocumentsStr).elements()}" camunda:elementVariable="baseDocument" />
+        <bpmn:startEvent id="Event_0y19zd5">
+          <bpmn:outgoing>Flow_0ze4f4j</bpmn:outgoing>
+        </bpmn:startEvent>
+        <bpmn:serviceTask id="Activity_0rr5uw7" name="Установить связь документов в пакете с документом-основанием" camunda:delegateExpression="#{restClient}">
+          <bpmn:extensionElements>
+            <camunda:inputOutput>
+              <camunda:inputParameter name="serviceName">documents</camunda:inputParameter>
+              <camunda:inputParameter name="path">private/documents/{guid}/relations</camunda:inputParameter>
+              <camunda:inputParameter name="pathParams">
+                <camunda:map>
+                  <camunda:entry key="guid">${S(document).prop("guid").stringValue()}</camunda:entry>
+                </camunda:map>
+              </camunda:inputParameter>
+              <camunda:inputParameter name="method">POST</camunda:inputParameter>
+              <camunda:inputParameter name="body">
+                <camunda:map>
+                  <camunda:entry key="author">${initiator}</camunda:entry>
+                  <camunda:entry key="relationCode">BASE_DOCUMENT</camunda:entry>
+                  <camunda:entry key="targetDocumentGuid">${S(baseDocument).prop("guid").stringValue()}</camunda:entry>
+                  <camunda:entry key="description">описание</camunda:entry>
+                </camunda:map>
+              </camunda:inputParameter>
+            </camunda:inputOutput>
+          </bpmn:extensionElements>
+          <bpmn:incoming>Flow_0ze4f4j</bpmn:incoming>
+          <bpmn:outgoing>Flow_13jygym</bpmn:outgoing>
+        </bpmn:serviceTask>
+        <bpmn:endEvent id="Event_1mwjnny">
+          <bpmn:incoming>Flow_13jygym</bpmn:incoming>
+        </bpmn:endEvent>
+        <bpmn:sequenceFlow id="Flow_0ze4f4j" sourceRef="Event_0y19zd5" targetRef="Activity_0rr5uw7" />
+        <bpmn:sequenceFlow id="Flow_13jygym" sourceRef="Activity_0rr5uw7" targetRef="Event_1mwjnny" />
+      </bpmn:subProcess>
+      <bpmn:sequenceFlow id="Flow_1mwdb6o" sourceRef="Activity_1ohumui" targetRef="Event_1xl0ika" />
+      <bpmn:sequenceFlow id="Flow_044hb1w" sourceRef="Event_1svr8he" targetRef="Activity_1ohumui" />
+    </bpmn:subProcess>
+    <bpmn:sequenceFlow id="Flow_05ga8qw" sourceRef="Activity_1vv665q" targetRef="Gateway_0ovjhng" />
+    <bpmn:serviceTask id="Activity_11ot9ae" name="Удаление связи пакета с документом-основанием" camunda:asyncBefore="true" camunda:delegateExpression="#{restClient}">
+      <bpmn:extensionElements>
+        <camunda:inputOutput>
+          <camunda:inputParameter name="serviceName">documents</camunda:inputParameter>
+          <camunda:inputParameter name="path">private/documents/${entityGuid}/relations/{guid}</camunda:inputParameter>
+          <camunda:inputParameter name="method">DELETE</camunda:inputParameter>
+        </camunda:inputOutput>
+      </bpmn:extensionElements>
+      <bpmn:incoming>Flow_09tt285</bpmn:incoming>
+      <bpmn:outgoing>Flow_1qbsqyp</bpmn:outgoing>
+      <bpmn:multiInstanceLoopCharacteristics isSequential="true" camunda:asyncBefore="true" camunda:collection="baseDocuments" camunda:elementVariable="pathParams" />
+    </bpmn:serviceTask>
+    <bpmn:sequenceFlow id="Flow_1qbsqyp" sourceRef="Activity_11ot9ae" targetRef="Activity_0962ttc" />
+    <bpmn:scriptTask id="Activity_0xfbgew" name="Фильтр документов по связи с сохранением предыдущих документов" camunda:asyncBefore="true" scriptFormat="groovy">
+      <bpmn:incoming>Flow_1n9s5i0</bpmn:incoming>
+      <bpmn:outgoing>Flow_150c8ap</bpmn:outgoing>
+      <bpmn:script>execution.setVariable("preDocuments",pdocuments)
+execution.setVariable("preDocumentsStr",packageDocuments)
+</bpmn:script>
+    </bpmn:scriptTask>
+    <bpmn:sequenceFlow id="Flow_150c8ap" sourceRef="Activity_0xfbgew" targetRef="Activity_0h4gdi8" />
+    <bpmn:sequenceFlow id="Flow_1895ll6" sourceRef="Activity_0b2hbmq" targetRef="Gateway_1cdbiqi" />
+    <bpmn:scriptTask id="Activity_0b2hbmq" name="Определить согласующих и подписанта" camunda:asyncBefore="true" scriptFormat="groovy">
+      <bpmn:incoming>Flow_155tuv8</bpmn:incoming>
+      <bpmn:outgoing>Flow_1895ll6</bpmn:outgoing>
+      <bpmn:script>def attributes = S(document).prop("data").prop("attributes")
+def isEDO = execution.getVariable("isEDO") as Boolean
+
+if (attributes != null &amp;&amp; isEDO == true) {
+
+  // определим согласующих
+  def logins = []
+  if (attributes.hasProp("AB033_APPROVER") &amp;&amp;
+      attributes.prop("AB033_APPROVER") != null) {
+
+    def approvers = attributes.prop("AB033_APPROVER")
+
+    if (approvers.isArray()) {
+      for (def approver : approvers.elements()) {
+        def login = approver.prop("login").stringValue()
+        if (login) {
+          logins.add(login)
+        }
+      }
+    } else {
+      // одиночный объект
+      def login = approvers.prop("login").stringValue()
+      if (login) {
+        logins.add(login)
+      }
+    }
+  }
+
+  execution.setVariable("approvers", logins)
+
+  // BEEDOCS-4947: определим, нужен ли этап подписания
+  // Типы исключения, для которых не требуется подписание:
+  Set&lt;String&gt; exceptionTypes = Set.of(
+    "TP_INVOICE",
+    "TP_INVOICE_REVISION",
+    "TP_INVOICE_CORRECTION",
+    "TP_PROFORMAINVOICE",
+    "TP_SERVICE_DETAILS"
+  )
+
+  // docsWithType должен быть заранее установлен (в Activity_0bgqzun) [file:1]
+  def docsWithType = execution.getVariable("docsWithType")
+
+  boolean allInExceptions = false
+  if (docsWithType != null) {
+    allInExceptions = docsWithType.stream()
+      .allMatch { d -&gt; exceptionTypes.contains(d.docType) }
+  }
+
+  execution.setVariable("allInExceptions", allInExceptions)
+
+  if (!allInExceptions) {
+    // определим подписанта
+    if (attributes.hasProp("AB423_SIGNATORY_EDO") &amp;&amp;
+        !attributes.prop("AB423_SIGNATORY_EDO").isNull()) {
+
+      def signatoryNode = attributes.prop("AB423_SIGNATORY_EDO")
+      if (signatoryNode.hasProp("value") &amp;&amp;
+          !signatoryNode.prop("value").isNull()) {
+
+        execution.setVariable("signatory",
+          signatoryNode.prop("value").stringValue())
+      }
+    }
+
+    // для тестирования
+    // if (attributes.hasProp("AB310_EDO_OPERATOR") &amp;&amp;
+    //     !attributes.prop("AB310_EDO_OPERATOR").isNull() &amp;&amp;
+    //     attributes.prop("AB310_EDO_OPERATOR").stringValue() == "testIVA") {
+    //
+    //   execution.setVariable("signatory", "ekatvlaivanova")
+    // }
+  }
+}
+</bpmn:script>
+    </bpmn:scriptTask>
+    <bpmn:scriptTask id="Activity_1f6eexb" name="Определить согласующих и подписанта" camunda:asyncBefore="true" scriptFormat="groovy">
+      <bpmn:incoming>Flow_0ilrpe9</bpmn:incoming>
+      <bpmn:outgoing>Flow_04ijd13</bpmn:outgoing>
+      <bpmn:script>def attributes = S(document).prop("data").prop("attributes")
+if (attributes != null){
+	if(isEDO==true){
+		//определим согласующих
+		def logins = []
+		if (attributes.hasProp("AB033_APPROVER") &amp;&amp; attributes.prop("AB033_APPROVER")!=null) {
+			def approvers = attributes.prop("AB033_APPROVER")
+			if (approvers.isArray()) {
+				for (def approver : approvers.elements()) {
+					def login = approver.prop("login").stringValue()
+					if (login) logins.add(login)
+				}
+			} else {
+				// Обработка случая, если передан не массив, а одиночный объект
+				def login = approvers.prop("login").stringValue()
+				if (login) 
+					logins.add(login)
+			}
+		}  
+		execution.setVariable('approvers',logins);
+		//определим подписанта
+		execution.setVariable('signatory','');
+		if (attributes.hasProp("AB423_SIGNATORY_EDO") &amp;&amp; !attributes.prop("AB423_SIGNATORY_EDO").isNull()) {
+			def signatoryNode = attributes.prop("AB423_SIGNATORY_EDO")
+			if (signatoryNode.hasProp("value") &amp;&amp; !signatoryNode.prop("value").isNull()) {
+				execution.setVariable('signatory',signatoryNode.prop("value").stringValue());
+			}
+		}
+	}
+}
+</bpmn:script>
+    </bpmn:scriptTask>
+    <bpmn:serviceTask id="Activity_01go4vg" name="Запрос атрибутов документа" camunda:asyncBefore="true" camunda:delegateExpression="#{restClient}">
+      <bpmn:extensionElements>
+        <camunda:inputOutput>
+          <camunda:inputParameter name="serviceName">documents</camunda:inputParameter>
+          <camunda:inputParameter name="path">private/documents/{guid}</camunda:inputParameter>
+          <camunda:inputParameter name="pathParams">
+            <camunda:map>
+              <camunda:entry key="guid">${entityGuid}</camunda:entry>
+            </camunda:map>
+          </camunda:inputParameter>
+          <camunda:inputParameter name="method">GET</camunda:inputParameter>
+          <camunda:inputParameter name="resultVarName">document</camunda:inputParameter>
+        </camunda:inputOutput>
+        <camunda:failedJobRetryTimeCycle />
+      </bpmn:extensionElements>
+      <bpmn:incoming>Flow_0ssi622</bpmn:incoming>
+      <bpmn:outgoing>Flow_0ilrpe9</bpmn:outgoing>
+    </bpmn:serviceTask>
+    <bpmn:sequenceFlow id="Flow_0ilrpe9" sourceRef="Activity_01go4vg" targetRef="Activity_1f6eexb" />
+    <bpmn:sequenceFlow id="Flow_04ijd13" sourceRef="Activity_1f6eexb" targetRef="Gateway_001oo66" />
+    <bpmn:exclusiveGateway id="Gateway_001oo66" default="Flow_1yf7b4i">
+      <bpmn:incoming>Flow_04ijd13</bpmn:incoming>
+      <bpmn:outgoing>Flow_1yf7b4i</bpmn:outgoing>
+      <bpmn:outgoing>Flow_04aapk1</bpmn:outgoing>
+    </bpmn:exclusiveGateway>
+    <bpmn:sequenceFlow id="Flow_1yf7b4i" sourceRef="Gateway_001oo66" targetRef="Activity_0m6cwv8" />
+    <bpmn:sequenceFlow id="Flow_04aapk1" sourceRef="Gateway_001oo66" targetRef="Gateway_0gs9j3e">
+      <bpmn:conditionExpression xsi:type="bpmn:tFormalExpression">${signatory==''}</bpmn:conditionExpression>
+    </bpmn:sequenceFlow>
+    <bpmn:serviceTask id="Activity_1p7t4cx" name="Запрос данных о подписанте по personId" camunda:asyncBefore="true" camunda:delegateExpression="#{restClient}">
+      <bpmn:extensionElements>
+        <camunda:inputOutput>
+          <camunda:inputParameter name="serviceName">users</camunda:inputParameter>
+          <camunda:inputParameter name="path">private/users</camunda:inputParameter>
+          <camunda:inputParameter name="queryParams">
+            <camunda:map>
+              <camunda:entry key="query">${'personId=='.concat(signatory)}</camunda:entry>
+            </camunda:map>
+          </camunda:inputParameter>
+          <camunda:inputParameter name="method">GET</camunda:inputParameter>
+          <camunda:inputParameter name="resultVarName">signatoryData</camunda:inputParameter>
+        </camunda:inputOutput>
+        <camunda:failedJobRetryTimeCycle />
+      </bpmn:extensionElements>
+      <bpmn:incoming>Flow_1qoscx8</bpmn:incoming>
+      <bpmn:outgoing>Flow_0ksw73i</bpmn:outgoing>
+    </bpmn:serviceTask>
+    <bpmn:sequenceFlow id="Flow_0ksw73i" sourceRef="Activity_1p7t4cx" targetRef="Activity_1mwimym" />
+    <bpmn:scriptTask id="Activity_1mwimym" name="Получение логина подписанта" camunda:asyncBefore="true" scriptFormat="groovy">
+      <bpmn:incoming>Flow_0ksw73i</bpmn:incoming>
+      <bpmn:outgoing>Flow_0wtasp9</bpmn:outgoing>
+      <bpmn:script>def login = S(signatoryData)
+    .prop("data")
+    .elements()
+    .get(0)
+    .prop("login")
+    .stringValue()
+
+execution.setVariable("signatory", login)
+</bpmn:script>
+    </bpmn:scriptTask>
+    <bpmn:sequenceFlow id="Flow_0wtasp9" sourceRef="Activity_1mwimym" targetRef="Gateway_1cso7vm" />
+    <bpmn:exclusiveGateway id="Gateway_1cdbiqi" name="Подписант найден по personId?" default="Flow_1qoscx8">
+      <bpmn:incoming>Flow_1895ll6</bpmn:incoming>
+      <bpmn:outgoing>Flow_1qoscx8</bpmn:outgoing>
+      <bpmn:outgoing>Flow_0igz1qf</bpmn:outgoing>
+    </bpmn:exclusiveGateway>
+    <bpmn:sequenceFlow id="Flow_1qoscx8" sourceRef="Gateway_1cdbiqi" targetRef="Activity_1p7t4cx" />
+    <bpmn:sequenceFlow id="Flow_0igz1qf" name="Нет" sourceRef="Gateway_1cdbiqi" targetRef="Gateway_1cso7vm">
+      <bpmn:conditionExpression xsi:type="bpmn:tFormalExpression">${signatory==''}</bpmn:conditionExpression>
+    </bpmn:sequenceFlow>
+    <bpmn:serviceTask id="Activity_0m6cwv8" name="Запрос данных о подписанте по personId" camunda:asyncBefore="true" camunda:delegateExpression="#{restClient}">
+      <bpmn:extensionElements>
+        <camunda:inputOutput>
+          <camunda:inputParameter name="serviceName">users</camunda:inputParameter>
+          <camunda:inputParameter name="path">private/users</camunda:inputParameter>
+          <camunda:inputParameter name="queryParams">
+            <camunda:map>
+              <camunda:entry key="query">${'personId=='.concat(signatory)}</camunda:entry>
+            </camunda:map>
+          </camunda:inputParameter>
+          <camunda:inputParameter name="method">GET</camunda:inputParameter>
+          <camunda:inputParameter name="resultVarName">signatoryData</camunda:inputParameter>
+        </camunda:inputOutput>
+        <camunda:failedJobRetryTimeCycle />
+      </bpmn:extensionElements>
+      <bpmn:incoming>Flow_1yf7b4i</bpmn:incoming>
+      <bpmn:outgoing>Flow_0gwhivb</bpmn:outgoing>
+    </bpmn:serviceTask>
+    <bpmn:sequenceFlow id="Flow_0gwhivb" sourceRef="Activity_0m6cwv8" targetRef="Activity_079wmpv" />
+    <bpmn:scriptTask id="Activity_079wmpv" name="Получение логина подписанта" camunda:asyncBefore="true" scriptFormat="groovy">
+      <bpmn:incoming>Flow_0gwhivb</bpmn:incoming>
+      <bpmn:outgoing>Flow_1nqpshn</bpmn:outgoing>
+      <bpmn:script>def login = S(signatoryData)
+    .prop("data")
+    .elements()
+    .get(0)
+    .prop("login")
+    .stringValue()
+
+execution.setVariable("signatory", login)
+</bpmn:script>
+    </bpmn:scriptTask>
+    <bpmn:sequenceFlow id="Flow_1nqpshn" sourceRef="Activity_079wmpv" targetRef="Gateway_0gs9j3e" />
+    <bpmn:serviceTask id="Activity_1q2tddr" name="Запрос связанных документов" camunda:asyncBefore="true" camunda:delegateExpression="#{restClient}">
+      <bpmn:extensionElements>
+        <camunda:inputOutput>
+          <camunda:inputParameter name="serviceName">documents</camunda:inputParameter>
+          <camunda:inputParameter name="path">private/documents/{guid}/relations</camunda:inputParameter>
+          <camunda:inputParameter name="pathParams">
+            <camunda:map>
+              <camunda:entry key="guid">${entityGuid}</camunda:entry>
+            </camunda:map>
+          </camunda:inputParameter>
+          <camunda:inputParameter name="method">GET</camunda:inputParameter>
+          <camunda:inputParameter name="resultVarName">documents</camunda:inputParameter>
+        </camunda:inputOutput>
+      </bpmn:extensionElements>
+      <bpmn:incoming>Flow_016h9ru</bpmn:incoming>
+      <bpmn:outgoing>Flow_005wowd</bpmn:outgoing>
+    </bpmn:serviceTask>
+    <bpmn:sequenceFlow id="Flow_005wowd" sourceRef="Activity_1q2tddr" targetRef="Activity_1dvpazv" />
+    <bpmn:scriptTask id="Activity_1dvpazv" name="Фильтр документов по связи" camunda:asyncBefore="true" scriptFormat="groovy">
+      <bpmn:incoming>Flow_005wowd</bpmn:incoming>
+      <bpmn:outgoing>Flow_1cpgy08</bpmn:outgoing>
+      <bpmn:script>import groovy.json.JsonSlurper
+import groovy.json.JsonOutput
+import org.camunda.spin.Spin
+import org.camunda.spin.json.SpinJsonNode
+import com.fasterxml.jackson.databind.ObjectMapper
+
+// Преобразуем SpinJsonNode в объект Groovy
+def json = new JsonSlurper().parseText(documents.toString())
+
+// Фильтруем только элементы с relationCode == "PACKAGE". Запоминаем guid и тип для BEEDOCS-4947
+def mappedDocs = json.data.findAll { it.relationCode == "PACKAGE" }.collect { item -&gt;
+    [
+		guid: item.targetGuid,
+		docType: item.targetType
+	]
+}
+// Сохраняем в процесс (строкой)
+execution.setVariable("docsWithType", mappedDocs);
+//для использования в multi-instance оставим только guid
+docs = mappedDocs.collect { item -&gt;
+    [
+		guid: item.guid
+	]
+}
+
+execution.setVariable("documents", docs);
+//для использования в expanded sub process
+ObjectMapper objectMapper = new ObjectMapper();
+execution.setVariable("packageDocuments", objectMapper.writeValueAsString(mappedDocs));
+
+mappedDocs = json.data.findAll { it.relationCode == "BASE_DOCUMENT" }.collect { item -&gt;
+    [guid: item.targetGuid]
+}
+
+execution.setVariable("baseDocuments", mappedDocs)
+execution.setVariable("baseDocumentsStr", objectMapper.writeValueAsString(mappedDocs))
+
+</bpmn:script>
+    </bpmn:scriptTask>
+    <bpmn:scriptTask id="Activity_1k5gyif" name="Проверить наличине номера ЗП" camunda:asyncBefore="true" scriptFormat="groovy">
+      <bpmn:incoming>Flow_0psohj6</bpmn:incoming>
+      <bpmn:outgoing>Flow_1kg3um6</bpmn:outgoing>
+      <bpmn:script>def attrs = S(document).prop("data").prop("attributes")
+
+// Если нет ZP — сразу выходим
+if (!attrs.hasProp("ZP")) {
+    execution.setVariable("purchaseOrderNumber", false)
+    return
+}
+
+def zp = attrs.prop("ZP")
+if (zp.isNull() || zp.elements().isEmpty()) {
+    execution.setVariable("purchaseOrderNumber", false)
+    return
+}
+
+def orderNumber = null
+
+zp.elements().each { item -&gt;
+    if (item.hasProp("AB296_PURCHASE_ORDER_NUMBER")) {
+        def node = item.prop("AB296_PURCHASE_ORDER_NUMBER")
+
+        if (!node.isNull()) {
+            // Парсинг: и для String, и для Number
+            String value = null
+
+            if (node.isString()) {
+                value = node.stringValue()
+            } else if (node.isNumber()) {
+                value = node.numberValue().toString()
+            }
+
+            if (value) {
+                orderNumber = value
+                return   // выходим из each, когда нашли первый номер
+            }
+        }
+    }
+}
+
+
+execution.setVariable("purchaseOrderNumber", orderNumber != null)</bpmn:script>
+    </bpmn:scriptTask>
+    <bpmn:exclusiveGateway id="Gateway_0ivpon7" name="Отправлено на изменение реквизитов?" default="Flow_0578ssx">
+      <bpmn:incoming>Flow_157afpy</bpmn:incoming>
+      <bpmn:outgoing>Flow_0578ssx</bpmn:outgoing>
+      <bpmn:outgoing>Flow_15854i3</bpmn:outgoing>
+    </bpmn:exclusiveGateway>
+    <bpmn:sequenceFlow id="Flow_0578ssx" name="Нет" sourceRef="Gateway_0ivpon7" targetRef="Gateway_1q6io7g" />
+    <bpmn:exclusiveGateway id="Gateway_1q6io7g" name="Отсутствует номер ЗП?" default="Flow_096as7y">
+      <bpmn:incoming>Flow_0578ssx</bpmn:incoming>
+      <bpmn:outgoing>Flow_096as7y</bpmn:outgoing>
+      <bpmn:outgoing>Flow_19b78ej</bpmn:outgoing>
+    </bpmn:exclusiveGateway>
+    <bpmn:sequenceFlow id="Flow_096as7y" sourceRef="Gateway_1q6io7g" targetRef="Gateway_01mtz8k" />
+    <bpmn:userTask id="Activity_0hqz393" name="Добавить реквизиты в систему" camunda:asyncBefore="true" camunda:candidateGroups="RL015_CREATE_PARTNER" camunda:dueDate="#{extensions.timeService.calculateDueDate(2, 0, 0)}">
+      <bpmn:documentation>${S(document).prop("data").prop("title").stringValue()}</bpmn:documentation>
+      <bpmn:extensionElements>
+        <camunda:inputOutput>
+          <camunda:inputParameter name="actions">TA043_COMPLETED</camunda:inputParameter>
+        </camunda:inputOutput>
+      </bpmn:extensionElements>
+      <bpmn:incoming>Flow_0mktbcw</bpmn:incoming>
+      <bpmn:outgoing>Flow_1abewf0</bpmn:outgoing>
+    </bpmn:userTask>
+    <bpmn:scriptTask id="Activity_1q5m5bo" name="Подготовка переменных" scriptFormat="groovy">
+      <bpmn:incoming>Flow_1vg9zzy</bpmn:incoming>
+      <bpmn:outgoing>Flow_1u2jv2s</bpmn:outgoing>
+      <bpmn:script>def title= S(document).prop("data").prop("title").stringValue();
+def lastComment = lastTaskComment;
+
+execution.setVariable('messageProperties', [messageTitle: title, packageId: entityGuid, lastTaskComment: lastComment, diadocComment: '', alert: '']);
+
+execution.setVariable('prevState','CORRECT_ZP');</bpmn:script>
+    </bpmn:scriptTask>
+    <bpmn:exclusiveGateway id="Gateway_02k239s" default="Flow_1ndfc59">
+      <bpmn:incoming>Flow_15854i3</bpmn:incoming>
+      <bpmn:incoming>Flow_1e5uypc</bpmn:incoming>
+      <bpmn:outgoing>Flow_1ndfc59</bpmn:outgoing>
+    </bpmn:exclusiveGateway>
+    <bpmn:exclusiveGateway id="Gateway_1bn5g4x">
+      <bpmn:incoming>Flow_1abewf0</bpmn:incoming>
+      <bpmn:outgoing>Flow_1imq7s2</bpmn:outgoing>
+      <bpmn:outgoing>Flow_0wky4c6</bpmn:outgoing>
+    </bpmn:exclusiveGateway>
+    <bpmn:sequenceFlow id="Flow_1u2jv2s" sourceRef="Activity_1q5m5bo" targetRef="Activity_0veyy5n" />
+    <bpmn:sequenceFlow id="Flow_1abewf0" sourceRef="Activity_0hqz393" targetRef="Gateway_1bn5g4x" />
+    <bpmn:sequenceFlow id="Flow_1ndfc59" name="DS072_MASTER" sourceRef="Gateway_02k239s" targetRef="Event_0tt1bov">
+      <bpmn:extensionElements>
+        <camunda:executionListener event="take">
+          <camunda:script scriptFormat="groovy">def statusCode = "DS072_MASTER"
+
+execution.setVariable("BeeDocs_statusCode", statusCode)</camunda:script>
+        </camunda:executionListener>
+      </bpmn:extensionElements>
+    </bpmn:sequenceFlow>
+    <bpmn:sequenceFlow id="Flow_15854i3" sourceRef="Gateway_0ivpon7" targetRef="Gateway_02k239s">
+      <bpmn:conditionExpression xsi:type="bpmn:tFormalExpression">${taskOutcome == 'TA050_CHANGE_DETAILS_PFD'}</bpmn:conditionExpression>
+    </bpmn:sequenceFlow>
+    <bpmn:exclusiveGateway id="Gateway_1tgrf6i" default="Flow_0iq15gc">
+      <bpmn:incoming>Flow_1354lti</bpmn:incoming>
+      <bpmn:incoming>Flow_19b78ej</bpmn:incoming>
+      <bpmn:incoming>Flow_1ee5yb6</bpmn:incoming>
+      <bpmn:outgoing>Flow_0iq15gc</bpmn:outgoing>
+    </bpmn:exclusiveGateway>
+    <bpmn:sequenceFlow id="Flow_0iq15gc" name="DS073_ZAKUPKI" sourceRef="Gateway_1tgrf6i" targetRef="Event_0jibzto">
+      <bpmn:extensionElements>
+        <camunda:executionListener event="take">
+          <camunda:script scriptFormat="groovy">def statusCode = "DS073_ZAKUPKI"
+
+execution.setVariable("BeeDocs_statusCode", statusCode)</camunda:script>
+        </camunda:executionListener>
+      </bpmn:extensionElements>
+    </bpmn:sequenceFlow>
+    <bpmn:sequenceFlow id="Flow_19b78ej" sourceRef="Gateway_1q6io7g" targetRef="Gateway_1tgrf6i">
+      <bpmn:conditionExpression xsi:type="bpmn:tFormalExpression">${purchaseOrderNumber == false}</bpmn:conditionExpression>
+    </bpmn:sequenceFlow>
+    <bpmn:sequenceFlow id="Flow_1imq7s2" sourceRef="Gateway_1bn5g4x" targetRef="Activity_00m2cui">
+      <bpmn:conditionExpression xsi:type="bpmn:tFormalExpression">${prevRole == "RL023_PURCHASES"}</bpmn:conditionExpression>
+    </bpmn:sequenceFlow>
+    <bpmn:sequenceFlow id="Flow_0wky4c6" sourceRef="Gateway_1bn5g4x" targetRef="Event_0fdtue3">
+      <bpmn:conditionExpression xsi:type="bpmn:tFormalExpression">${prevRole == "RL026_VERIFIER_PFD"}</bpmn:conditionExpression>
+    </bpmn:sequenceFlow>
+    <bpmn:exclusiveGateway id="Gateway_015nzwl" default="Flow_1acu1e1">
+      <bpmn:incoming>Flow_08a2rcy</bpmn:incoming>
+      <bpmn:outgoing>Flow_1acu1e1</bpmn:outgoing>
+      <bpmn:outgoing>Flow_1e5uypc</bpmn:outgoing>
+      <bpmn:outgoing>Flow_1yfhtls</bpmn:outgoing>
+    </bpmn:exclusiveGateway>
+    <bpmn:sequenceFlow id="Flow_1acu1e1" sourceRef="Gateway_015nzwl" targetRef="Gateway_0ekunrk" />
+    <bpmn:scriptTask id="Activity_179zzvu" name="Определение наименования задачи" scriptFormat="groovy">
+      <bpmn:incoming>Flow_029v8dl</bpmn:incoming>
+      <bpmn:outgoing>Flow_1wc9j8d</bpmn:outgoing>
+      <bpmn:script>// Входные переменные
+def purchaseOrderNumber    = execution.getVariable('purchaseOrderNumber')
+def taskOutcome = execution.getVariable('taskOutcome')
+def document    = execution.getVariable('document')
+def createDate  = execution.getVariable('createDate')
+// Парсим document
+def docSpin = document ? S(document) : null
+def data    = docSpin ? docSpin.prop("data") : null
+def attributes = data ? data.prop("attributes") : null
+// Определяем заголовок документа
+def documentTitle = (data &amp;&amp; !data.prop("title").isNull())
+        ? data.prop("title").stringValue()
+        : "документ"
+// Устанавливаем переменные "ИНН" и "Наименование поставщика"
+def supplierInn  = ""
+def supplierName = ""
+if (attributes) {
+    if (attributes.hasProp('AB307_SUPPLIER_INN')
+            &amp;&amp; !attributes.prop('AB307_SUPPLIER_INN').isNull()) {
+        supplierInn = attributes.prop('AB307_SUPPLIER_INN').stringValue()
+    }
+    if (attributes.hasProp('AB306_SUPPLIER_NAME')
+            &amp;&amp; !attributes.prop('AB306_SUPPLIER_NAME').isNull()) {
+        supplierName = attributes.prop('AB306_SUPPLIER_NAME').stringValue()
+    }
+}
+// Формирует заголовок задачи
+def taskName = "Скорректировать ЗП: ${documentTitle}, от ${createDate}".toString()
+if (purchaseOrderNumber == false) {
+    taskName = "Создание ЗП по пакету: ИНН ${supplierInn}, от ${supplierName}".toString()
+}
+execution.setVariable('zpTaskName', taskName)
+// Добавляем переменную notificationCode
+def notificationCode = "PACKAGE_USER_TASK_CREATED"
+if (taskOutcome == 'TA39_CORRECT_ZP') {
+    notificationCode = "ZP_CORRECTION"
+}
+execution.setVariable('notificationCode', notificationCode)
+// Логирование
+println "=== SUMMARY ==="
+println "zpTaskName: '${taskName}'"
+println "notificationCode: '${notificationCode}'"
+println "purchaseOrderNumber: ${purchaseOrderNumber}"
+println "supplierInn: '${supplierInn}'"
+println "supplierName: '${supplierName}'"
+println "================="</bpmn:script>
+    </bpmn:scriptTask>
+    <bpmn:sequenceFlow id="Flow_1wc9j8d" sourceRef="Activity_179zzvu" targetRef="Activity_0nja24y" />
+    <bpmn:sequenceFlow id="Flow_1e5uypc" sourceRef="Gateway_015nzwl" targetRef="Gateway_02k239s">
+      <bpmn:conditionExpression xsi:type="bpmn:tFormalExpression">${taskOutcome == 'TA050_CHANGE_DETAILS_PFD'}</bpmn:conditionExpression>
+    </bpmn:sequenceFlow>
+    <bpmn:scriptTask id="Activity_00m2cui" name="Подмена Action" camunda:asyncBefore="true" scriptFormat="groovy">
+      <bpmn:incoming>Flow_1imq7s2</bpmn:incoming>
+      <bpmn:outgoing>Flow_1wh7sgq</bpmn:outgoing>
+      <bpmn:script>execution.setVariable("taskOutcome", "TA39_CORRECT_ZP")</bpmn:script>
+    </bpmn:scriptTask>
+    <bpmn:sequenceFlow id="Flow_1wh7sgq" sourceRef="Activity_00m2cui" targetRef="Gateway_1mu7ep3" />
+    <bpmn:exclusiveGateway id="Gateway_1ds027d" default="Flow_07sm9dl">
+      <bpmn:incoming>Flow_066nc1k</bpmn:incoming>
+      <bpmn:incoming>Flow_1is9aea</bpmn:incoming>
+      <bpmn:outgoing>Flow_07sm9dl</bpmn:outgoing>
+    </bpmn:exclusiveGateway>
+    <bpmn:sequenceFlow id="Flow_07sm9dl" sourceRef="Gateway_1ds027d" targetRef="Event_1la6w9i" />
+    <bpmn:sequenceFlow id="Flow_066nc1k" sourceRef="Gateway_0w2rx1p" targetRef="Gateway_1ds027d">
+      <bpmn:conditionExpression xsi:type="bpmn:tFormalExpression">${allInExceptions || diadocFullSign}</bpmn:conditionExpression>
+    </bpmn:sequenceFlow>
+    <bpmn:exclusiveGateway id="Gateway_0uu77ct" default="Flow_1d5gezz">
+      <bpmn:incoming>Flow_0m500y2</bpmn:incoming>
+      <bpmn:incoming>Flow_1nyjjfv</bpmn:incoming>
+      <bpmn:outgoing>Flow_0jdp9af</bpmn:outgoing>
+      <bpmn:outgoing>Flow_1d5gezz</bpmn:outgoing>
+      <bpmn:outgoing>Flow_17f4wo7</bpmn:outgoing>
+    </bpmn:exclusiveGateway>
+    <bpmn:sequenceFlow id="Flow_0jdp9af" sourceRef="Gateway_0uu77ct" targetRef="Event_1c87ist">
+      <bpmn:conditionExpression xsi:type="bpmn:tFormalExpression">${taskOutcome == 'TA015_REWORK'}</bpmn:conditionExpression>
+    </bpmn:sequenceFlow>
+    <bpmn:sequenceFlow id="Flow_1d5gezz" sourceRef="Gateway_0uu77ct" targetRef="Activity_011pr7j" />
+    <bpmn:intermediateCatchEvent id="Event_1nru6n7" name="TA40_DELETE">
+      <bpmn:outgoing>Flow_0ggr5it</bpmn:outgoing>
+      <bpmn:linkEventDefinition id="LinkEventDefinition_0z5eht6" name="TA40_DELETE" />
+    </bpmn:intermediateCatchEvent>
+    <bpmn:sequenceFlow id="Flow_0ggr5it" sourceRef="Event_1nru6n7" targetRef="Event_13qnsnz" />
+    <bpmn:intermediateThrowEvent id="Event_1fozt41" name="TA40_DELETE">
+      <bpmn:incoming>Flow_0msk9c5</bpmn:incoming>
+      <bpmn:linkEventDefinition id="LinkEventDefinition_1pd4tnf" name="TA40_DELETE" />
+    </bpmn:intermediateThrowEvent>
+    <bpmn:serviceTask id="Activity_0pzl8bb" name="Отправка уведомления инициатору об удалении" camunda:asyncBefore="true" camunda:delegateExpression="#{notificationSender}">
+      <bpmn:extensionElements>
+        <camunda:inputOutput>
+          <camunda:inputParameter name="messageCode">PACKAGE_PROCESSING_DELETED</camunda:inputParameter>
+          <camunda:inputParameter name="addresseeLogins">${initiator}</camunda:inputParameter>
+          <camunda:inputParameter name="properties">
+            <camunda:map>
+              <camunda:entry key="packageId">${entityGuid}</camunda:entry>
+              <camunda:entry key="messageTitle">${S(document).prop("data").prop("title").stringValue()}</camunda:entry>
+              <camunda:entry key="lastTaskComment">${lastTaskComment}</camunda:entry>
+            </camunda:map>
+          </camunda:inputParameter>
+        </camunda:inputOutput>
+      </bpmn:extensionElements>
+      <bpmn:incoming>Flow_0dx4k0v</bpmn:incoming>
+      <bpmn:outgoing>Flow_1tsnpu9</bpmn:outgoing>
+    </bpmn:serviceTask>
+    <bpmn:sequenceFlow id="Flow_1tsnpu9" sourceRef="Activity_0pzl8bb" targetRef="Event_1v8bwlp" />
+    <bpmn:exclusiveGateway id="Gateway_1dbjwh2" default="Flow_16ewy7t">
+      <bpmn:incoming>Flow_1ns4fvt</bpmn:incoming>
+      <bpmn:incoming>Flow_02myeba</bpmn:incoming>
+      <bpmn:outgoing>Flow_16ewy7t</bpmn:outgoing>
+      <bpmn:outgoing>Flow_1mzk92x</bpmn:outgoing>
+      <bpmn:outgoing>Flow_070804h</bpmn:outgoing>
+    </bpmn:exclusiveGateway>
+    <bpmn:sequenceFlow id="Flow_16ewy7t" sourceRef="Gateway_1dbjwh2" targetRef="Gateway_0r7kg6d" />
+    <bpmn:userTask id="Activity_1mbdowq" name="Отправить пакет ПФД на оплату" camunda:asyncBefore="true" camunda:candidateGroups="RL024_ACCOUNTING" camunda:dueDate="#{extensions.timeService.calculateDueDate(2, 0, 0)}">
+      <bpmn:documentation>${S(document).prop("data").prop("title").stringValue()}</bpmn:documentation>
+      <bpmn:extensionElements>
+        <camunda:inputOutput>
+          <camunda:inputParameter name="actions">${userActions}</camunda:inputParameter>
+        </camunda:inputOutput>
+        <camunda:taskListener event="complete">
+          <camunda:script scriptFormat="groovy">import org.camunda.bpm.engine.RuntimeService
+import org.camunda.bpm.engine.runtime.ActivityInstance
+
+// В TaskListener доступен объект task
+def execution = task.execution
+def processEngine = execution.getProcessEngine()
+def runtimeService = processEngine.getRuntimeService()
+def processInstanceId = execution.getProcessInstanceId()
+
+// Флаг: задачу выполнил пользователь
+execution.setVariable("USER_COMPLETED_BEFORE_RPA", true)
+
+// Ищем активный экземпляр подпроцесса Activity_0dpg8ze
+def activityInstances = runtimeService.getActivityInstance(processInstanceId)
+
+def findSubprocess
+findSubprocess = { ActivityInstance node -&gt;
+    if (node.activityId == "Activity_0dpg8ze") return node
+    for (child in node.childActivityInstances) {
+        def found = findSubprocess(child)
+        if (found != null) return found
+    }
+    return null
+}
+
+def subprocessInstance = findSubprocess(activityInstances)
+
+if (subprocessInstance != null) {
+    println "===============LOG=================="
+    println "### USER_COMPLETED: отменяем подпроцесс Activity_0dpg8ze"
+    println "### subprocessInstanceId=${subprocessInstance.id}"
+    println "===================================="
+
+    runtimeService
+        .createProcessInstanceModification(processInstanceId)
+        .cancelActivityInstance(subprocessInstance.id)
+        .execute()
+} else {
+    println "===============LOG=================="
+    println "### USER_COMPLETED: подпроцесс Activity_0dpg8ze уже завершён или не найден"
+    println "===================================="
+}
+</camunda:script>
+        </camunda:taskListener>
+      </bpmn:extensionElements>
+      <bpmn:incoming>Flow_0jg3zlf</bpmn:incoming>
+      <bpmn:outgoing>Flow_1rrclqh</bpmn:outgoing>
+    </bpmn:userTask>
+    <bpmn:scriptTask id="Activity_0wlcssu" name="Подготовка переменных" camunda:asyncBefore="true" scriptFormat="groovy">
+      <bpmn:incoming>Flow_02adx82</bpmn:incoming>
+      <bpmn:outgoing>Flow_1t4vyfw</bpmn:outgoing>
+      <bpmn:script>def docGuid = S(document)?.prop("data")?.prop("guid")?.stringValue()
+execution.setVariable("documentGuid", docGuid)
+def title= S(document).prop("data").prop("title").stringValue();
+def lastComment = lastTaskComment;
+
+//блок определения кнопок для этапа Бухгалтерия
+def actions = "TA015_REWORK,TA39_CORRECT_ZP,TA044_VERIFICATION_PFD,TA043_COMPLETED,TA045_NEED_INFORMATION,TA049_MARK_DOUBLE";
+
+if (!isEDO){
+    actions = actions +",TA38_SEND_TO_RESCAN";
+}
+
+execution.setVariable('userActions', actions);	
+//---
+
+execution.setVariable('messageProperties', [messageTitle: title, packageId: entityGuid, lastTaskComment: lastComment, diadocComment: '', alert: '']);
+
+execution.setVariable('prevState','DS039_EXECUTION');</bpmn:script>
+    </bpmn:scriptTask>
+    <bpmn:sequenceFlow id="Flow_1rrclqh" sourceRef="Activity_1mbdowq" targetRef="Gateway_0ra96w3" />
+    <bpmn:intermediateCatchEvent id="Event_13qnsnz" name="3 сек">
+      <bpmn:incoming>Flow_0ggr5it</bpmn:incoming>
+      <bpmn:outgoing>Flow_023hh8n</bpmn:outgoing>
+      <bpmn:timerEventDefinition id="TimerEventDefinition_1af216k">
+        <bpmn:timeDuration xsi:type="bpmn:tFormalExpression">PT3S</bpmn:timeDuration>
+      </bpmn:timerEventDefinition>
+    </bpmn:intermediateCatchEvent>
+    <bpmn:scriptTask id="Activity_0veyy5n" name="Извлечение formData" scriptFormat="groovy">
+      <bpmn:incoming>Flow_1u2jv2s</bpmn:incoming>
+      <bpmn:outgoing>Flow_10tzl8e</bpmn:outgoing>
+      <bpmn:script>import groovy.json.JsonSlurper
+
+def taskAssignee = execution.getVariable('taskAssignee')
+def formDataRaw = execution.getVariable('formData')
+
+println "=====PROCESS LOG====="
+println "Task Assignee: " + taskAssignee
+println "Form Data raw: " + formDataRaw
+println "===================="
+
+def commentText = null
+def commentAuthor = null
+
+if (formDataRaw) {
+    try {
+        def formData = new JsonSlurper().parseText(formDataRaw.toString())
+        println "Form Data parsed: " + formData
+
+        // Извлекаем комментарии
+        def standardComment = formData?.AB453_SELECT_STANDARD_COMMENT?.displayTitle
+        def freeComment = formData?.AB_017_COMMENT
+
+        println "Standard comment: '" + standardComment + "' (type: " + (standardComment?.getClass()) + ")"
+        println "Free comment: '" + freeComment + "' (type: " + (freeComment?.getClass()) + ")"
+
+        if (taskAssignee &amp;&amp; taskAssignee.toString().trim()) {
+            commentAuthor = taskAssignee.toString().trim()
+        }
+
+        // Конкатенируем комментарии
+        def parts = []
+        if (standardComment != null &amp;&amp; standardComment.toString().trim()) {
+            parts &lt;&lt; standardComment.toString().trim()
+        }
+        if (freeComment != null &amp;&amp; freeComment.toString().trim()) {
+            parts &lt;&lt; freeComment.toString().trim()
+        }
+
+        commentText = parts ? parts.join(' ').trim() : null
+
+        println "Parts array: " + parts
+        println "Comment text extracted: '" + commentText + "'"
+        println "Comment author: '" + commentAuthor + "'"
+
+    } catch (Exception e) {
+        println "JSON parse error: " + e.message
+        commentText = null
+    }
+}
+
+def documentGuid = execution.getVariable('entityGuid') ?:
+    (Sdocument?.prop?.data?.prop?.guid?.stringValue ?: "MISSING_GUID")
+
+execution.setVariable('commentText', commentText)
+execution.setVariable('documentGuid', documentGuid)
+execution.setVariable('commentAuthor', commentAuthor)
+
+println "Variables prepared: commentText='" + commentText + "', commentAuthor='" + commentAuthor + "', documentGuid='" + documentGuid + "'"
+</bpmn:script>
+    </bpmn:scriptTask>
+    <bpmn:sequenceFlow id="Flow_10tzl8e" sourceRef="Activity_0veyy5n" targetRef="Activity_0ir4oq7" />
+    <bpmn:serviceTask id="Activity_0ir4oq7" name="Добавление комментария" camunda:asyncBefore="true" camunda:delegateExpression="#{restClient}">
+      <bpmn:extensionElements>
+        <camunda:inputOutput>
+          <camunda:inputParameter name="serviceName">documents</camunda:inputParameter>
+          <camunda:inputParameter name="path">private/documents/{documentGuid}/comments</camunda:inputParameter>
+          <camunda:inputParameter name="method">POST</camunda:inputParameter>
+          <camunda:inputParameter name="body">{
+  "author":"${commentAuthor}",
+  "data": "${commentText}",
+  "parentId": null,
+  "taggedUsers": []
+}</camunda:inputParameter>
+          <camunda:inputParameter name="resultVarName">commentResponse</camunda:inputParameter>
+          <camunda:inputParameter name="pathParams">
+            <camunda:map>
+              <camunda:entry key="documentGuid">${documentGuid}</camunda:entry>
+            </camunda:map>
+          </camunda:inputParameter>
+        </camunda:inputOutput>
+      </bpmn:extensionElements>
+      <bpmn:incoming>Flow_10tzl8e</bpmn:incoming>
+      <bpmn:outgoing>Flow_0mktbcw</bpmn:outgoing>
+    </bpmn:serviceTask>
+    <bpmn:sequenceFlow id="Flow_0mktbcw" sourceRef="Activity_0ir4oq7" targetRef="Activity_0hqz393" />
+    <bpmn:intermediateCatchEvent id="Event_1jbjv70" name="TA049_MARK_DOUBLE">
+      <bpmn:outgoing>Flow_1ecj5mp</bpmn:outgoing>
+      <bpmn:linkEventDefinition id="LinkEventDefinition_00tv73s" name="TA049_MARK_DOUBLE" />
+    </bpmn:intermediateCatchEvent>
+    <bpmn:endEvent id="Event_1eswgja">
+      <bpmn:incoming>Flow_12zr42a</bpmn:incoming>
+      <bpmn:terminateEventDefinition id="TerminateEventDefinition_19esn4m" />
+    </bpmn:endEvent>
+    <bpmn:serviceTask id="Activity_0obs5nq" name="Удаление связи пакета с документом-основанием" camunda:asyncBefore="true" camunda:delegateExpression="#{restClient}">
+      <bpmn:extensionElements>
+        <camunda:inputOutput>
+          <camunda:inputParameter name="serviceName">documents</camunda:inputParameter>
+          <camunda:inputParameter name="path">private/documents/${entityGuid}/relations/{guid}</camunda:inputParameter>
+          <camunda:inputParameter name="method">DELETE</camunda:inputParameter>
+        </camunda:inputOutput>
+      </bpmn:extensionElements>
+      <bpmn:incoming>Flow_04lrqm9</bpmn:incoming>
+      <bpmn:outgoing>Flow_16t04uy</bpmn:outgoing>
+      <bpmn:multiInstanceLoopCharacteristics isSequential="true" camunda:asyncBefore="true" camunda:collection="baseDocuments" camunda:elementVariable="pathParams" />
+    </bpmn:serviceTask>
+    <bpmn:subProcess id="Activity_1k3aaxt" name="Последовательный цикл по изменению статусов">
+      <bpmn:incoming>Flow_0qcsaqv</bpmn:incoming>
+      <bpmn:outgoing>Flow_0xrp966</bpmn:outgoing>
+      <bpmn:multiInstanceLoopCharacteristics isSequential="true" camunda:collection="${S(packageDocuments).elements()}" camunda:elementVariable="document" />
+      <bpmn:startEvent id="Event_1c0529y">
+        <bpmn:outgoing>Flow_01btvap</bpmn:outgoing>
+      </bpmn:startEvent>
+      <bpmn:endEvent id="Event_11a3jee">
+        <bpmn:incoming>Flow_177aj9a</bpmn:incoming>
+      </bpmn:endEvent>
+      <bpmn:subProcess id="Activity_1sho8zp" name="Цикл по установке связей с документом-основанием">
+        <bpmn:incoming>Flow_01btvap</bpmn:incoming>
+        <bpmn:outgoing>Flow_177aj9a</bpmn:outgoing>
+        <bpmn:multiInstanceLoopCharacteristics isSequential="true" camunda:collection="${S(baseDocumentsStr).elements()}" camunda:elementVariable="baseDocument" />
+        <bpmn:startEvent id="Event_04qyemi">
+          <bpmn:outgoing>Flow_1vqxye1</bpmn:outgoing>
+        </bpmn:startEvent>
+        <bpmn:serviceTask id="Activity_19n631k" name="Удаление связи документов пакета с документом-основанием" camunda:delegateExpression="#{restClient}">
+          <bpmn:extensionElements>
+            <camunda:inputOutput>
+              <camunda:inputParameter name="serviceName">documents</camunda:inputParameter>
+              <camunda:inputParameter name="path">private/documents/{guid}/relations/{targetGuid}</camunda:inputParameter>
+              <camunda:inputParameter name="pathParams">
+                <camunda:map>
+                  <camunda:entry key="guid">${S(document).prop("guid").stringValue()}</camunda:entry>
+                  <camunda:entry key="targetGuid">${S(baseDocument).prop("guid").stringValue()}</camunda:entry>
+                </camunda:map>
+              </camunda:inputParameter>
+              <camunda:inputParameter name="method">DELETE</camunda:inputParameter>
+            </camunda:inputOutput>
+          </bpmn:extensionElements>
+          <bpmn:incoming>Flow_1vqxye1</bpmn:incoming>
+          <bpmn:outgoing>Flow_1u98r7d</bpmn:outgoing>
+        </bpmn:serviceTask>
+        <bpmn:endEvent id="Event_006fms5">
+          <bpmn:incoming>Flow_1u98r7d</bpmn:incoming>
+        </bpmn:endEvent>
+        <bpmn:sequenceFlow id="Flow_1vqxye1" sourceRef="Event_04qyemi" targetRef="Activity_19n631k" />
+        <bpmn:sequenceFlow id="Flow_1u98r7d" sourceRef="Activity_19n631k" targetRef="Event_006fms5" />
+      </bpmn:subProcess>
+      <bpmn:sequenceFlow id="Flow_01btvap" sourceRef="Event_1c0529y" targetRef="Activity_1sho8zp" />
+      <bpmn:sequenceFlow id="Flow_177aj9a" sourceRef="Activity_1sho8zp" targetRef="Event_11a3jee" />
+    </bpmn:subProcess>
+    <bpmn:sequenceFlow id="Flow_0xrp966" sourceRef="Activity_1k3aaxt" targetRef="Activity_1u8bhgp" />
+    <bpmn:sequenceFlow id="Flow_1ecj5mp" sourceRef="Event_1jbjv70" targetRef="Activity_0zot5n0">
+      <bpmn:extensionElements />
+    </bpmn:sequenceFlow>
+    <bpmn:intermediateThrowEvent id="Event_0q7dg62" name="REWORK">
+      <bpmn:incoming>Flow_0sr3yys</bpmn:incoming>
+      <bpmn:linkEventDefinition id="LinkEventDefinition_082zkmm" name="REWORK" />
+    </bpmn:intermediateThrowEvent>
+    <bpmn:sequenceFlow id="Flow_0sr3yys" sourceRef="Gateway_0ra96w3" targetRef="Event_0q7dg62">
+      <bpmn:conditionExpression xsi:type="bpmn:tFormalExpression">${taskOutcome == 'TA049_MARK_DOUBLE'||taskOutcome == 'TA015_REWORK'}</bpmn:conditionExpression>
+    </bpmn:sequenceFlow>
+    <bpmn:sequenceFlow id="Flow_1mzk92x" sourceRef="Gateway_1dbjwh2" targetRef="Event_18jmjlz">
+      <bpmn:conditionExpression xsi:type="bpmn:tFormalExpression">${taskOutcome == 'TA049_MARK_DOUBLE'}</bpmn:conditionExpression>
+    </bpmn:sequenceFlow>
+    <bpmn:intermediateThrowEvent id="Event_18jmjlz" name="TA049_MARK_DOUBLE">
+      <bpmn:incoming>Flow_1mzk92x</bpmn:incoming>
+      <bpmn:linkEventDefinition id="LinkEventDefinition_1jbvhu8" name="TA049_MARK_DOUBLE" />
+    </bpmn:intermediateThrowEvent>
+    <bpmn:scriptTask id="Activity_011pr7j" name="Подготовка документов к подписанию" camunda:asyncBefore="true" scriptFormat="groovy">
+      <bpmn:incoming>Flow_1d5gezz</bpmn:incoming>
+      <bpmn:outgoing>Flow_1es23zd</bpmn:outgoing>
+      <bpmn:script>import groovy.json.JsonSlurper
+import java.util.logging.Logger
+import com.fasterxml.jackson.databind.ObjectMapper
+
+Logger logger = Logger.getLogger("PFD_DIADOC_LOG")
+ObjectMapper objectMapper = new ObjectMapper()
+
+// 1. guids = Spin JSON STRING → обычная строка
+// список подкументов, по которым выполнено подписание/отказ от подписания
+def guidsString = ""
+if(guids instanceof String){
+  guidsString = guids
+}else{
+  guidsString = guids.stringValue()
+}
+
+// 2. строку JSON → List
+def guidsList = new JsonSlurper().parseText(guidsString)
+
+// 3. Формируем List&lt;Map&gt; для multi-instance
+def sdocumentsList = guidsList.collect { [guid: it] }
+
+// 4. Сохраняем
+execution.setVariable("sdocuments", sdocumentsList)
+execution.setVariable("signedDocuments", objectMapper.writeValueAsString(sdocumentsList))
+
+// 5. sType (тоже STRING в JSON)
+// sign/reject - подписано/отказано в подписи
+def sTypeValue = ""
+if (sType instanceof String){
+  sTypeValue = sType 
+}else{
+  sTypeValue = sType.stringValue()
+}
+
+execution.setVariable("sType", sTypeValue)
+
+def diadocStateCode = sType=='sign'?'DS049_CONFIRMATION_AWAITING_DELIVERY':'DS047_REJECTED_AWAITING_DELIVERY';
+execution.setVariable('diadocStateCode',diadocStateCode);
+// 6. fullReject (тоже BOOLEAN в JSON)
+// если был отказ в подписи, то фронта приходит fullReject:
+// * true - полный отказ от подписания =&gt; пакет будет переведен в статус Удален вместе со всеми его документами
+// * false - частичный отказ от подписания =&gt; пакет будет переведен на доработку инициатору после чего выбранные документы будут удалены из пакета
+execution.setVariable("partialReject", false)
+if (execution.hasVariable("fullReject") &amp;&amp; fullReject != null) {
+    def fullRejectValue = fullReject.boolValue()
+    execution.setVariable("fullRejectBool", fullRejectValue)
+    if(!fullRejectBool) execution.setVariable("partialReject", true)		
+} 
+//первый раз запускаем отправку в диадок
+execution.setVariable("diadocRepeat",false);
+
+logger.info(
+    "prepared: ${sdocumentsList} " +
+    "processId: ${execution.getProcessInstanceId()}"
+)
+
+logger.info("packageIsClosed after sign: "+packageIsClosed);</bpmn:script>
+    </bpmn:scriptTask>
+    <bpmn:sequenceFlow id="Flow_1es23zd" sourceRef="Activity_011pr7j" targetRef="Event_0qgq0as" />
+    <bpmn:scriptTask id="Activity_18yple9" name="Определить согласующих и подписанта" camunda:asyncBefore="true" scriptFormat="groovy">
+      <bpmn:incoming>Flow_0m8q26l</bpmn:incoming>
+      <bpmn:outgoing>Flow_1qjuahu</bpmn:outgoing>
+      <bpmn:script>def attributes = S(document).prop("data").prop("attributes")
+if (attributes != null){
+     def isEDO = attributes.hasProp("AB310_EDO_OPERATOR") &amp;&amp;         !attributes.prop("AB310_EDO_OPERATOR").isNull();
+	execution.setVariable('isEDO',isEDO);
+	if(isEDO==true){
+		//определим согласующих
+		def logins = []
+		if (attributes.hasProp("AB033_APPROVER") &amp;&amp; attributes.prop("AB033_APPROVER")!=null) {
+			def approvers = attributes.prop("AB033_APPROVER")
+			if (approvers.isArray()) {
+				for (def approver : approvers.elements()) {
+					def login = approver.prop("login").stringValue()
+					if (login) logins.add(login)
+				}
+			} else {
+				// Обработка случая, если передан не массив, а одиночный объект
+				def login = approvers.prop("login").stringValue()
+				if (login) 
+					logins.add(login)
+			}
+		}  
+		execution.setVariable('approvers',logins);
+		//определим подписанта
+		execution.setVariable('signatory','');
+		if (attributes.hasProp("AB423_SIGNATORY_EDO") &amp;&amp; !attributes.prop("AB423_SIGNATORY_EDO").isNull()) {
+			def signatoryNode = attributes.prop("AB423_SIGNATORY_EDO")
+			if (signatoryNode.hasProp("value") &amp;&amp; !signatoryNode.prop("value").isNull()) {
+				execution.setVariable('signatory',signatoryNode.prop("value").stringValue());
+			}
+		}
+	}
+}
+</bpmn:script>
+    </bpmn:scriptTask>
+    <bpmn:sequenceFlow id="Flow_1qjuahu" sourceRef="Activity_18yple9" targetRef="Gateway_0v7423v" />
+    <bpmn:serviceTask id="Activity_1bu4k07" name="Запрос данных о подписанте по personId" camunda:asyncBefore="true" camunda:delegateExpression="#{restClient}">
+      <bpmn:extensionElements>
+        <camunda:inputOutput>
+          <camunda:inputParameter name="serviceName">users</camunda:inputParameter>
+          <camunda:inputParameter name="path">private/users</camunda:inputParameter>
+          <camunda:inputParameter name="queryParams">
+            <camunda:map>
+              <camunda:entry key="query">${'personId=='.concat(signatory)}</camunda:entry>
+            </camunda:map>
+          </camunda:inputParameter>
+          <camunda:inputParameter name="method">GET</camunda:inputParameter>
+          <camunda:inputParameter name="resultVarName">signatoryData</camunda:inputParameter>
+        </camunda:inputOutput>
+        <camunda:failedJobRetryTimeCycle />
+      </bpmn:extensionElements>
+      <bpmn:incoming>Flow_1v7wcky</bpmn:incoming>
+      <bpmn:outgoing>Flow_07dwwft</bpmn:outgoing>
+    </bpmn:serviceTask>
+    <bpmn:scriptTask id="Activity_0pivdy8" name="Получение логина подписанта" camunda:asyncBefore="true" scriptFormat="groovy">
+      <bpmn:incoming>Flow_07dwwft</bpmn:incoming>
+      <bpmn:outgoing>Flow_1ohgska</bpmn:outgoing>
+      <bpmn:script>def login = S(signatoryData)
+    .prop("data")
+    .elements()
+    .get(0)
+    .prop("login")
+    .stringValue()
+
+execution.setVariable("signatory", login)
+</bpmn:script>
+    </bpmn:scriptTask>
+    <bpmn:sequenceFlow id="Flow_07dwwft" sourceRef="Activity_1bu4k07" targetRef="Activity_0pivdy8" />
+    <bpmn:sequenceFlow id="Flow_1ohgska" sourceRef="Activity_0pivdy8" targetRef="Gateway_04b90u7" />
+    <bpmn:exclusiveGateway id="Gateway_0v7423v" default="Flow_1v7wcky">
+      <bpmn:incoming>Flow_1qjuahu</bpmn:incoming>
+      <bpmn:outgoing>Flow_1v7wcky</bpmn:outgoing>
+      <bpmn:outgoing>Flow_09zeaxg</bpmn:outgoing>
+    </bpmn:exclusiveGateway>
+    <bpmn:sequenceFlow id="Flow_1v7wcky" sourceRef="Gateway_0v7423v" targetRef="Activity_1bu4k07" />
+    <bpmn:sequenceFlow id="Flow_09zeaxg" sourceRef="Gateway_0v7423v" targetRef="Gateway_04b90u7">
+      <bpmn:conditionExpression xsi:type="bpmn:tFormalExpression">${signatory==''}</bpmn:conditionExpression>
+    </bpmn:sequenceFlow>
+    <bpmn:sequenceFlow id="Flow_16t04uy" sourceRef="Activity_0obs5nq" targetRef="Activity_017ddbl" />
+    <bpmn:intermediateCatchEvent id="Event_04b6yvf" name="REWORK">
+      <bpmn:outgoing>Flow_0wsvj6f</bpmn:outgoing>
+      <bpmn:linkEventDefinition id="LinkEventDefinition_0z0zi18" name="REWORK" />
+    </bpmn:intermediateCatchEvent>
+    <bpmn:sequenceFlow id="Flow_0wsvj6f" sourceRef="Event_04b6yvf" targetRef="Event_0yzw89s">
+      <bpmn:extensionElements>
+        <camunda:executionListener event="take">
+          <camunda:script scriptFormat="groovy">def statusCode = "DS034_REWORK"
+
+execution.setVariable("BeeDocs_statusCode", statusCode)</camunda:script>
+        </camunda:executionListener>
+      </bpmn:extensionElements>
+    </bpmn:sequenceFlow>
+    <bpmn:sequenceFlow id="Flow_1u4wlay" sourceRef="Gateway_1legeec" targetRef="Event_03v002x">
+      <bpmn:conditionExpression xsi:type="bpmn:tFormalExpression">${taskOutcome == 'TA049_MARK_DOUBLE'||taskOutcome == 'TA015_REWORK'}</bpmn:conditionExpression>
+    </bpmn:sequenceFlow>
+    <bpmn:intermediateThrowEvent id="Event_03v002x" name="REWORK">
+      <bpmn:incoming>Flow_1u4wlay</bpmn:incoming>
+      <bpmn:linkEventDefinition id="LinkEventDefinition_1spwq8h" name="REWORK" />
+    </bpmn:intermediateThrowEvent>
+    <bpmn:scriptTask id="Activity_0pjso05" name="Проверка удаления документа из пакета" camunda:asyncBefore="true" scriptFormat="groovy">
+      <bpmn:incoming>Flow_1ngp244</bpmn:incoming>
+      <bpmn:outgoing>Flow_0q26a22</bpmn:outgoing>
+      <bpmn:script>import groovy.json.JsonSlurper
+import groovy.json.JsonOutput
+
+def oldJson = new JsonSlurper().parseText(JsonOutput.toJson(duplicateDocuments))
+//def relationsJson = document.prop("data").prop("relations").toString()
+def newJson = new JsonSlurper().parseText(JsonOutput.toJson(documents))
+
+def relationGuids = newJson.collect { it.guid }
+execution.setVariable("relationGuids", relationGuids)
+def deleteDocs = oldJson
+        .collect { [guid: it.guid] }
+        .findAll { item -&gt; !relationGuids.contains(item.guid) }
+
+execution.setVariable("deleteDocs", deleteDocs)
+</bpmn:script>
+    </bpmn:scriptTask>
+    <bpmn:serviceTask id="Activity_0t2dx0m" name="Установка статуса &#34;Дубль&#34;" camunda:asyncBefore="true" camunda:delegateExpression="#{restClient}">
+      <bpmn:extensionElements>
+        <camunda:inputOutput>
+          <camunda:inputParameter name="serviceName">documents</camunda:inputParameter>
+          <camunda:inputParameter name="path">private/documents/{guid}/_status</camunda:inputParameter>
+          <camunda:inputParameter name="method">PUT</camunda:inputParameter>
+          <camunda:inputParameter name="body">
+            <camunda:map>
+              <camunda:entry key="statusCode">DS053_DOUBLE</camunda:entry>
+            </camunda:map>
+          </camunda:inputParameter>
+        </camunda:inputOutput>
+      </bpmn:extensionElements>
+      <bpmn:incoming>Flow_0q26a22</bpmn:incoming>
+      <bpmn:outgoing>Flow_0rmvavg</bpmn:outgoing>
+      <bpmn:multiInstanceLoopCharacteristics isSequential="true" camunda:asyncBefore="true" camunda:collection="deleteDocs" camunda:elementVariable="pathParams">
+        <bpmn:extensionElements>
+          <camunda:failedJobRetryTimeCycle />
+        </bpmn:extensionElements>
+      </bpmn:multiInstanceLoopCharacteristics>
+    </bpmn:serviceTask>
+    <bpmn:sequenceFlow id="Flow_1ngp244" sourceRef="Gateway_0p6rxyu" targetRef="Activity_0pjso05">
+      <bpmn:conditionExpression xsi:type="bpmn:tFormalExpression">${findDuplicate}</bpmn:conditionExpression>
+    </bpmn:sequenceFlow>
+    <bpmn:sequenceFlow id="Flow_0q26a22" sourceRef="Activity_0pjso05" targetRef="Activity_0t2dx0m" />
+    <bpmn:sequenceFlow id="Flow_02c1im4" sourceRef="Activity_1wub8zr" targetRef="Gateway_0orgtc7" />
+    <bpmn:exclusiveGateway id="Gateway_049bf04" default="Flow_00ur79z">
+      <bpmn:incoming>Flow_18cwsxs</bpmn:incoming>
+      <bpmn:outgoing>Flow_00ur79z</bpmn:outgoing>
+      <bpmn:outgoing>Flow_1nyo8xy</bpmn:outgoing>
+    </bpmn:exclusiveGateway>
+    <bpmn:sequenceFlow id="Flow_00ur79z" sourceRef="Gateway_049bf04" targetRef="Gateway_0u3t3bj" />
+    <bpmn:sequenceFlow id="Flow_1nyo8xy" name="DS052_PROCESSING_IN_ECM_APFD" sourceRef="Gateway_049bf04" targetRef="Activity_0xl6g8m">
+      <bpmn:extensionElements>
+        <camunda:executionListener event="take">
+          <camunda:script scriptFormat="groovy">def statusCode = "DS052_PROCESSING_IN_ECM_APFD"
+
+execution.setVariable("BeeDocs_statusCode", statusCode)</camunda:script>
+        </camunda:executionListener>
+      </bpmn:extensionElements>
+      <bpmn:conditionExpression xsi:type="bpmn:tFormalExpression">${!isEDO&amp;&amp;!hasBaseDocument&amp;&amp; sendECM == true}</bpmn:conditionExpression>
+    </bpmn:sequenceFlow>
+    <bpmn:endEvent id="Event_1h1oi6t">
+      <bpmn:incoming>Flow_10h2oit</bpmn:incoming>
+    </bpmn:endEvent>
+    <bpmn:exclusiveGateway id="Gateway_0p6rxyu" default="Flow_06fajb4">
+      <bpmn:incoming>Flow_10vchwq</bpmn:incoming>
+      <bpmn:incoming>Flow_1fjsxvm</bpmn:incoming>
+      <bpmn:outgoing>Flow_06fajb4</bpmn:outgoing>
+      <bpmn:outgoing>Flow_1ngp244</bpmn:outgoing>
+    </bpmn:exclusiveGateway>
+    <bpmn:sequenceFlow id="Flow_06fajb4" sourceRef="Gateway_0p6rxyu" targetRef="Gateway_0orgtc7" />
+    <bpmn:intermediateThrowEvent id="Event_092pszk" name="REWORK">
+      <bpmn:incoming>Flow_0phbacv</bpmn:incoming>
+      <bpmn:linkEventDefinition id="LinkEventDefinition_01zvg5r" name="REWORK" />
+    </bpmn:intermediateThrowEvent>
+    <bpmn:sequenceFlow id="Flow_0phbacv" sourceRef="Gateway_1v6c8as" targetRef="Event_092pszk">
+      <bpmn:conditionExpression xsi:type="bpmn:tFormalExpression">${diadocError || (taskOutcome == 'TA010_REJECT' &amp;&amp; fullRejectBool!='true')}</bpmn:conditionExpression>
+    </bpmn:sequenceFlow>
+    <bpmn:serviceTask id="Activity_1xbtlwl" name="Передача документов в ECM" camunda:asyncBefore="true" camunda:delegateExpression="#{restClient}">
+      <bpmn:extensionElements>
+        <camunda:inputOutput>
+          <camunda:inputParameter name="serviceName">pfd-service</camunda:inputParameter>
+          <camunda:inputParameter name="path">private/integration/send-to-ecm-for-processing</camunda:inputParameter>
+          <camunda:inputParameter name="method">POST</camunda:inputParameter>
+          <camunda:inputParameter name="body">
+            <camunda:map>
+              <camunda:entry key="beedocs_container_id">${entityGuid}</camunda:entry>
+            </camunda:map>
+          </camunda:inputParameter>
+          <camunda:inputParameter name="resultVarName">ecmRes</camunda:inputParameter>
+        </camunda:inputOutput>
+      </bpmn:extensionElements>
+      <bpmn:incoming>Flow_0ulwpyj</bpmn:incoming>
+      <bpmn:incoming>Flow_17wucnx</bpmn:incoming>
+      <bpmn:outgoing>Flow_0ttyah1</bpmn:outgoing>
+    </bpmn:serviceTask>
+    <bpmn:sequenceFlow id="Flow_0ttyah1" sourceRef="Activity_1xbtlwl" targetRef="Activity_1ilw6g3" />
+    <bpmn:scriptTask id="Activity_1wub8zr" name="Очистка duplicateDocuments" camunda:asyncBefore="true" scriptFormat="groovy">
+      <bpmn:incoming>Flow_0rmvavg</bpmn:incoming>
+      <bpmn:outgoing>Flow_02c1im4</bpmn:outgoing>
+      <bpmn:script>if(execution.hasVariable("duplicateDocuments")){
+  def guidsToDelete = deleteDocs*.guid
+
+  def filteredDuplicateDocuments = duplicateDocuments.findAll { doc -&gt;
+    !guidsToDelete.contains(doc.guid)
+  }
+  execution.setVariable("duplicateDocuments", filteredDuplicateDocuments)
+}</bpmn:script>
+    </bpmn:scriptTask>
+    <bpmn:sequenceFlow id="Flow_0rmvavg" sourceRef="Activity_0t2dx0m" targetRef="Activity_1wub8zr" />
+    <bpmn:intermediateThrowEvent id="Event_0p8apql" name="REWORK">
+      <bpmn:incoming>Flow_1cnu3u4</bpmn:incoming>
+      <bpmn:linkEventDefinition id="LinkEventDefinition_0fqvxbg" name="REWORK" />
+    </bpmn:intermediateThrowEvent>
+    <bpmn:serviceTask id="Activity_0zjyn7u" name="Запрос связанных документов" camunda:asyncBefore="true" camunda:delegateExpression="#{restClient}">
+      <bpmn:extensionElements>
+        <camunda:inputOutput>
+          <camunda:inputParameter name="serviceName">documents</camunda:inputParameter>
+          <camunda:inputParameter name="path">private/documents/{guid}/relations</camunda:inputParameter>
+          <camunda:inputParameter name="pathParams">
+            <camunda:map>
+              <camunda:entry key="guid">${entityGuid}</camunda:entry>
+            </camunda:map>
+          </camunda:inputParameter>
+          <camunda:inputParameter name="method">GET</camunda:inputParameter>
+          <camunda:inputParameter name="resultVarName">documents</camunda:inputParameter>
+        </camunda:inputOutput>
+      </bpmn:extensionElements>
+      <bpmn:incoming>Flow_0rz5ve6</bpmn:incoming>
+      <bpmn:incoming>Flow_1366s10</bpmn:incoming>
+      <bpmn:outgoing>Flow_1e7ej95</bpmn:outgoing>
+    </bpmn:serviceTask>
+    <bpmn:sequenceFlow id="Flow_1e7ej95" sourceRef="Activity_0zjyn7u" targetRef="Activity_15ywmut" />
+    <bpmn:sequenceFlow id="Flow_1ns4fvt" sourceRef="Activity_14zjjl6" targetRef="Gateway_1dbjwh2" />
+    <bpmn:scriptTask id="Activity_14zjjl6" name="Проверка были ли добавлены новые документы на подписание" scriptFormat="groovy">
+      <bpmn:incoming>Flow_1cixzcc</bpmn:incoming>
+      <bpmn:outgoing>Flow_1ns4fvt</bpmn:outgoing>
+      <bpmn:script>// документы с такими типами не требуют подписания
+Set&lt;String&gt; exceptionTypes = Set.of(
+        "TP_INVOICE",
+        "TP_INVOICE_REVISION",
+        "TP_INVOICE_CORRECTION",
+        "TP_PROFORMAINVOICE",
+        "TP_SERVICE_DETAILS"
+)
+
+// преобразуем preDocuments в Set guid для быстрого поиска
+Set&lt;String&gt; preDocumentGuids = preDocuments
+        .collect { it.guid }
+        .toSet()
+
+// нашли новые связанные документы
+def newDocuments = docsWithType.findAll { doc -&gt;
+    !preDocumentGuids.contains(doc.guid) &amp;&amp;
+    !exceptionTypes.contains(doc.docType)
+}
+
+// diadocFullSign установим в true, если на доработку мы попали не с подписания и согласования
+// и обновим его, если появились новые документы на подписание
+if (diadocFullSign) {
+    diadocFullSign = newDocuments.isEmpty()
+    execution.setVariable("diadocFullSign", diadocFullSign)
+}
+
+  // docsWithType должен быть заранее установлен (в Activity_0bgqzun) [file:1]
+  def docsWithType = execution.getVariable("docsWithType")
+
+  boolean allInExceptions = false
+  if (docsWithType != null) {
+    allInExceptions = docsWithType.stream()
+      .allMatch { d -&gt; exceptionTypes.contains(d.docType) }
+  }
+
+  execution.setVariable("allInExceptions", allInExceptions)</bpmn:script>
+    </bpmn:scriptTask>
+    <bpmn:scriptTask id="Activity_15ywmut" name="Фильтр документов по связи" camunda:asyncBefore="true" scriptFormat="groovy">
+      <bpmn:incoming>Flow_1e7ej95</bpmn:incoming>
+      <bpmn:outgoing>Flow_08rm8d1</bpmn:outgoing>
+      <bpmn:script>import groovy.json.JsonSlurper
+import groovy.json.JsonOutput
+import org.camunda.spin.Spin
+import org.camunda.spin.json.SpinJsonNode
+import com.fasterxml.jackson.databind.ObjectMapper
+import java.util.logging.Logger
+
+Logger logger = Logger.getLogger("PFD_LOG")
+
+
+// Преобразуем SpinJsonNode в объект Groovy
+def json = new JsonSlurper().parseText(documents.toString())
+
+// Фильтруем только элементы с relationCode == "PACKAGE". Запоминаем guid и тип для BEEDOCS-4947
+def mappedDocs = json.data.findAll { it.relationCode == "PACKAGE" }.collect { item -&gt;
+    [
+		guid: item.targetGuid,
+		docType: item.targetType
+	]
+}
+// Сохраняем в процесс (строкой)
+execution.setVariable("docsWithType", mappedDocs);
+//для использования в multi-instance оставим только guid
+docs = mappedDocs.collect { item -&gt;
+    [
+		guid: item.guid
+	]
+}
+
+execution.setVariable("documents", docs);
+//для использования в expanded sub process
+ObjectMapper objectMapper = new ObjectMapper();
+execution.setVariable("packageDocuments", objectMapper.writeValueAsString(mappedDocs));
+
+mappedDocs = json.data.findAll { it.relationCode == "BASE_DOCUMENT" }.collect { item -&gt;
+    [guid: item.targetGuid]
+}
+
+execution.setVariable("baseDocuments", mappedDocs)
+execution.setVariable("baseDocumentsStr", objectMapper.writeValueAsString(mappedDocs))
+
+logger.info("packageIsClosed after revise: "+packageIsClosed);</bpmn:script>
+    </bpmn:scriptTask>
+    <bpmn:sequenceFlow id="Flow_08rm8d1" sourceRef="Activity_15ywmut" targetRef="Gateway_0zb7j16" />
+    <bpmn:intermediateThrowEvent id="Event_0vzw44v" name="TA40_DELETE">
+      <bpmn:incoming>Flow_070804h</bpmn:incoming>
+      <bpmn:linkEventDefinition id="LinkEventDefinition_07w14ia" name="TA40_DELETE" />
+    </bpmn:intermediateThrowEvent>
+    <bpmn:sequenceFlow id="Flow_070804h" sourceRef="Gateway_1dbjwh2" targetRef="Event_0vzw44v">
+      <bpmn:conditionExpression xsi:type="bpmn:tFormalExpression">${taskOutcome == 'TA40_DELETE' || autoClosed}</bpmn:conditionExpression>
+    </bpmn:sequenceFlow>
+    <bpmn:exclusiveGateway id="Gateway_0orgtc7" default="Flow_0m8q26l">
+      <bpmn:incoming>Flow_02c1im4</bpmn:incoming>
+      <bpmn:incoming>Flow_06fajb4</bpmn:incoming>
+      <bpmn:outgoing>Flow_0m8q26l</bpmn:outgoing>
+      <bpmn:outgoing>Flow_0m58h4k</bpmn:outgoing>
+    </bpmn:exclusiveGateway>
+    <bpmn:sequenceFlow id="Flow_0m8q26l" sourceRef="Gateway_0orgtc7" targetRef="Activity_18yple9" />
+    <bpmn:sequenceFlow id="Flow_0m58h4k" sourceRef="Gateway_0orgtc7" targetRef="Gateway_04b90u7">
+      <bpmn:conditionExpression xsi:type="bpmn:tFormalExpression">${diadocFullSign}</bpmn:conditionExpression>
+    </bpmn:sequenceFlow>
+    <bpmn:exclusiveGateway id="Gateway_1iyphpj" name="Была автосвязка по ЗП?" default="Flow_07xhk37">
+      <bpmn:incoming>Flow_11xdgzs</bpmn:incoming>
+      <bpmn:incoming>Flow_0kpb17o</bpmn:incoming>
+      <bpmn:outgoing>Flow_07xhk37</bpmn:outgoing>
+      <bpmn:outgoing>Flow_1nik9e8</bpmn:outgoing>
+    </bpmn:exclusiveGateway>
+    <bpmn:sequenceFlow id="Flow_07xhk37" sourceRef="Gateway_1iyphpj" targetRef="Activity_1vv665q" />
+    <bpmn:sequenceFlow id="Flow_1nik9e8" name="Да" sourceRef="Gateway_1iyphpj" targetRef="Gateway_0ovjhng">
+      <bpmn:conditionExpression xsi:type="bpmn:tFormalExpression">${findDocumentZP == true || (execution.hasVariable("linkContractPFD") &amp;&amp; linkContractPFD == true) || hasBaseDocument}</bpmn:conditionExpression>
+    </bpmn:sequenceFlow>
+    <bpmn:sequenceFlow id="Flow_1s3mfbr" sourceRef="Gateway_0ovjhng" targetRef="Gateway_1i7u1lh" />
+    <bpmn:sequenceFlow id="Flow_0cgpzd4" sourceRef="Activity_0m3b4hl" targetRef="Gateway_1i7u1lh" />
+    <bpmn:intermediateThrowEvent id="Event_0ed17pl" name="BeeIdpResult">
+      <bpmn:incoming>Flow_1yembom</bpmn:incoming>
+      <bpmn:linkEventDefinition id="LinkEventDefinition_1kjlt0u" name="BeeIdpResult" />
+    </bpmn:intermediateThrowEvent>
+    <bpmn:intermediateCatchEvent id="Event_0usvuxs" name="BeeIdp">
+      <bpmn:outgoing>Flow_1r0fitf</bpmn:outgoing>
+      <bpmn:linkEventDefinition id="LinkEventDefinition_0jzb9hs" name="BeeIdp" />
+    </bpmn:intermediateCatchEvent>
+    <bpmn:scriptTask id="Activity_0mh34m1" name="diadocFullSign=true" scriptFormat="groovy">
+      <bpmn:incoming>Flow_1bi3vdh</bpmn:incoming>
+      <bpmn:outgoing>Flow_1is9aea</bpmn:outgoing>
+      <bpmn:script>//сюда можем попасть только если было полное подписание
+execution.setVariable("diadocFullSign", true)</bpmn:script>
+    </bpmn:scriptTask>
+    <bpmn:exclusiveGateway id="Gateway_0zw7v4y" default="Flow_1ef71dm">
+      <bpmn:incoming>Flow_0sve966</bpmn:incoming>
+      <bpmn:outgoing>Flow_1ef71dm</bpmn:outgoing>
+      <bpmn:outgoing>Flow_11i83je</bpmn:outgoing>
+    </bpmn:exclusiveGateway>
+    <bpmn:sequenceFlow id="Flow_1ef71dm" sourceRef="Gateway_0zw7v4y" targetRef="Event_1mvb3zn" />
+    <bpmn:sequenceFlow id="Flow_11i83je" sourceRef="Gateway_0zw7v4y" targetRef="Activity_1vl0th1">
+      <bpmn:conditionExpression xsi:type="bpmn:tFormalExpression">${!ecmSuccess}</bpmn:conditionExpression>
+    </bpmn:sequenceFlow>
+    <bpmn:sequenceFlow id="Flow_1xlh49a" sourceRef="Event_1mvb3zn" targetRef="Activity_0e6gs2d" />
+    <bpmn:exclusiveGateway id="Gateway_0azb3nq" default="Flow_0lmn9y3">
+      <bpmn:incoming>Flow_12w2de3</bpmn:incoming>
+      <bpmn:outgoing>Flow_0lmn9y3</bpmn:outgoing>
+      <bpmn:outgoing>Flow_0q28rse</bpmn:outgoing>
+    </bpmn:exclusiveGateway>
+    <bpmn:sequenceFlow id="Flow_0lmn9y3" name="DS104_OK_ECM_APFD" sourceRef="Gateway_0azb3nq" targetRef="Event_1wqo5fz">
+      <bpmn:extensionElements>
+        <camunda:executionListener event="take">
+          <camunda:script scriptFormat="groovy">def statusCode = "DS104_OK_ECM_APFD"
+
+execution.setVariable("BeeDocs_statusCode", statusCode)</camunda:script>
+        </camunda:executionListener>
+      </bpmn:extensionElements>
+    </bpmn:sequenceFlow>
+    <bpmn:sequenceFlow id="Flow_0q28rse" sourceRef="Gateway_0azb3nq" targetRef="Activity_1vl0th1">
+      <bpmn:conditionExpression xsi:type="bpmn:tFormalExpression">${!DCM_PROCESSING_SUCCEDDED}</bpmn:conditionExpression>
+    </bpmn:sequenceFlow>
+    <bpmn:exclusiveGateway id="Gateway_19granx" default="Flow_0oh49zx">
+      <bpmn:incoming>Flow_19ym9mc</bpmn:incoming>
+      <bpmn:outgoing>Flow_0oh49zx</bpmn:outgoing>
+      <bpmn:outgoing>Flow_0ulwpyj</bpmn:outgoing>
+    </bpmn:exclusiveGateway>
+    <bpmn:endEvent id="Event_1nn5ldb">
+      <bpmn:incoming>Flow_1vs4kwf</bpmn:incoming>
+    </bpmn:endEvent>
+    <bpmn:sequenceFlow id="Flow_0oh49zx" name="DS105_ERROR_ECM_APFD" sourceRef="Gateway_19granx" targetRef="Event_0mczd27">
+      <bpmn:extensionElements>
+        <camunda:executionListener event="take">
+          <camunda:script scriptFormat="groovy">def statusCode = "DS105_ERROR_ECM_APFD"
+
+execution.setVariable("BeeDocs_statusCode", statusCode)</camunda:script>
+        </camunda:executionListener>
+      </bpmn:extensionElements>
+    </bpmn:sequenceFlow>
+    <bpmn:sequenceFlow id="Flow_0ulwpyj" sourceRef="Gateway_19granx" targetRef="Activity_1xbtlwl">
+      <bpmn:conditionExpression xsi:type="bpmn:tFormalExpression">${taskOutcome == 'TA054_SEND_TO_ECM'}</bpmn:conditionExpression>
+    </bpmn:sequenceFlow>
+    <bpmn:intermediateCatchEvent id="Event_1mvb3zn" name="DCM_DOCUMENT_PROCESSED ">
+      <bpmn:incoming>Flow_1ef71dm</bpmn:incoming>
+      <bpmn:outgoing>Flow_1xlh49a</bpmn:outgoing>
+      <bpmn:messageEventDefinition id="MessageEventDefinition_17lub92" messageRef="Message_201a2bb" />
+    </bpmn:intermediateCatchEvent>
+    <bpmn:scriptTask id="Activity_0e6gs2d" name="Обработка результата" camunda:asyncBefore="true" scriptFormat="groovy">
+      <bpmn:incoming>Flow_1xlh49a</bpmn:incoming>
+      <bpmn:outgoing>Flow_12w2de3</bpmn:outgoing>
+      <bpmn:script>import java.util.logging.Logger
+
+Logger logger = Logger.getLogger("PFD_ECM_LOG")
+logger.info ("ecmRes 2 started processId: "+execution.getProcessInstanceId())
+logger.info ("ecmRes 2 DCM_PROCESSING_SUCCEDDED: "+DCM_PROCESSING_SUCCEDDED +" processId: "+execution.getProcessInstanceId())
+logger.info ("ecmRes 2 DCM_PROCESSING_COMMENT: "+DCM_PROCESSING_COMMENT +" processId: "+execution.getProcessInstanceId());
+
+  </bpmn:script>
+    </bpmn:scriptTask>
+    <bpmn:sequenceFlow id="Flow_12w2de3" sourceRef="Activity_0e6gs2d" targetRef="Gateway_0azb3nq" />
+    <bpmn:userTask id="Activity_0pbne3z" name="Доработка пакета для ECM" camunda:asyncBefore="true" camunda:candidateGroups="RL025_LEAD_VERIFIER" camunda:dueDate="#{extensions.timeService.calculateDueDate(2, 0, 0)}">
+      <bpmn:documentation>${S(document).prop("data").prop("title").stringValue()}</bpmn:documentation>
+      <bpmn:extensionElements>
+        <camunda:inputOutput>
+          <camunda:inputParameter name="actions">TA054_SEND_TO_ECM,TA055_ECM_ERROR</camunda:inputParameter>
+        </camunda:inputOutput>
+        <camunda:taskListener delegateExpression="#{userTaskNotificationListener}" event="create">
+          <camunda:field name="messageCode">
+            <camunda:string>PACKAGE_USER_TASK_CREATED</camunda:string>
+          </camunda:field>
+          <camunda:field name="addresseeRoles">
+            <camunda:string>RL025_LEAD_VERIFIER</camunda:string>
+          </camunda:field>
+          <camunda:field name="properties">
+            <camunda:expression>${messageProperties}</camunda:expression>
+          </camunda:field>
+        </camunda:taskListener>
+      </bpmn:extensionElements>
+      <bpmn:incoming>Flow_155iwf0</bpmn:incoming>
+      <bpmn:outgoing>Flow_19ym9mc</bpmn:outgoing>
+    </bpmn:userTask>
+    <bpmn:sequenceFlow id="Flow_19ym9mc" sourceRef="Activity_0pbne3z" targetRef="Gateway_19granx" />
+    <bpmn:scriptTask id="Activity_1vl0th1" name="Подготовка переменных" scriptFormat="groovy">
+      <bpmn:incoming>Flow_0q28rse</bpmn:incoming>
+      <bpmn:incoming>Flow_11i83je</bpmn:incoming>
+      <bpmn:outgoing>Flow_1wtxgkx</bpmn:outgoing>
+      <bpmn:script>def title= S(document).prop("data").prop("title").stringValue();
+def lastComment="";
+if(execution.hasVariable("lastTaskComment")){
+   lastComment = lastTaskComment;
+}
+
+execution.setVariable('messageProperties', [messageTitle: title, packageId: entityGuid, lastTaskComment: lastComment, diadocComment: '', alert: '']);
+
+if(!ecmSuccess){
+  execution.setVariable("ecmComment", 'Во время передачи документов ECM возникла ошибка: '+ ecmMessage)
+}
+if(!DCM_PROCESSING_SUCCEDDED){
+  execution.setVariable("ecmComment", 'Во время передачи документов ECM возникла ошибка: '+ DCM_PROCESSING_COMMENT)
+}
+</bpmn:script>
+    </bpmn:scriptTask>
+    <bpmn:sequenceFlow id="Flow_1wtxgkx" sourceRef="Activity_1vl0th1" targetRef="Activity_0jy6r2f" />
+    <bpmn:scriptTask id="Activity_1ilw6g3" name="Обработка результата" camunda:asyncBefore="true" scriptFormat="groovy">
+      <bpmn:incoming>Flow_0ttyah1</bpmn:incoming>
+      <bpmn:outgoing>Flow_0sve966</bpmn:outgoing>
+      <bpmn:script>import java.util.logging.Logger
+
+Logger logger = Logger.getLogger("PFD_ECM_LOG")
+
+def jsonNode = execution.getVariable("ecmRes")
+
+logger.info("ecmRes: " + jsonNode + 
+            " processId: " + execution.getProcessInstanceId())
+
+def ecmSuccess = jsonNode.prop("success").value()
+def ecmMessage = jsonNode.prop("error").value()
+
+execution.setVariable("ecmSuccess", ecmSuccess)
+execution.setVariable("ecmMessage", ecmMessage)
+
+</bpmn:script>
+    </bpmn:scriptTask>
+    <bpmn:sequenceFlow id="Flow_0sve966" sourceRef="Activity_1ilw6g3" targetRef="Gateway_0zw7v4y" />
+    <bpmn:serviceTask id="Activity_1wg4f9q" name="Запрос атрибутов документа" camunda:asyncBefore="true" camunda:delegateExpression="#{restClient}">
+      <bpmn:extensionElements>
+        <camunda:inputOutput>
+          <camunda:inputParameter name="serviceName">documents</camunda:inputParameter>
+          <camunda:inputParameter name="path">private/documents/{guid}</camunda:inputParameter>
+          <camunda:inputParameter name="pathParams">
+            <camunda:map>
+              <camunda:entry key="guid">${entityGuid}</camunda:entry>
+            </camunda:map>
+          </camunda:inputParameter>
+          <camunda:inputParameter name="method">GET</camunda:inputParameter>
+          <camunda:inputParameter name="resultVarName">document</camunda:inputParameter>
+        </camunda:inputOutput>
+        <camunda:failedJobRetryTimeCycle />
+      </bpmn:extensionElements>
+      <bpmn:incoming>Flow_1pmkb08</bpmn:incoming>
+      <bpmn:outgoing>Flow_01gu5le</bpmn:outgoing>
+    </bpmn:serviceTask>
+    <bpmn:exclusiveGateway id="Gateway_0u3t3bj" default="Flow_1v7vj8o">
+      <bpmn:incoming>Flow_00ur79z</bpmn:incoming>
+      <bpmn:outgoing>Flow_1v7vj8o</bpmn:outgoing>
+      <bpmn:outgoing>Flow_1pmkb08</bpmn:outgoing>
+    </bpmn:exclusiveGateway>
+    <bpmn:sequenceFlow id="Flow_1v7vj8o" sourceRef="Gateway_0u3t3bj" targetRef="Gateway_17lmb53" />
+    <bpmn:sequenceFlow id="Flow_1pmkb08" sourceRef="Gateway_0u3t3bj" targetRef="Activity_1wg4f9q">
+      <bpmn:conditionExpression xsi:type="bpmn:tFormalExpression">${BEEDOCS4180== true}</bpmn:conditionExpression>
+    </bpmn:sequenceFlow>
+    <bpmn:scriptTask id="Activity_1cu4e3g" name="Удаление таймера" scriptFormat="groovy">
+      <bpmn:incoming>Flow_00779p4</bpmn:incoming>
+      <bpmn:outgoing>Flow_1yjik6m</bpmn:outgoing>
+      <bpmn:script>// ---------------------------
+// Получаем RuntimeService через execution
+// ---------------------------
+def runtimeService = execution.getProcessEngineServices().getRuntimeService()
+
+// ---------------------------
+// ID Message Intermediate Catch Event
+// ---------------------------
+def timerEventId = "Event_timerError"
+
+// ---------------------------
+// Отменяем все экземпляры activity с этим ID
+// ---------------------------
+runtimeService
+    .createProcessInstanceModification(execution.getProcessInstanceId())
+    .cancelAllForActivity(timerEventId)
+    .execute()</bpmn:script>
+    </bpmn:scriptTask>
+    <bpmn:parallelGateway id="Gateway_10m9qym">
+      <bpmn:incoming>Flow_1r0fitf</bpmn:incoming>
+      <bpmn:outgoing>Flow_1bysfq4</bpmn:outgoing>
+      <bpmn:outgoing>Flow_033ojk6</bpmn:outgoing>
+    </bpmn:parallelGateway>
+    <bpmn:intermediateCatchEvent id="Event_timerError">
+      <bpmn:incoming>Flow_033ojk6</bpmn:incoming>
+      <bpmn:outgoing>Flow_1p7lu55</bpmn:outgoing>
+      <bpmn:timerEventDefinition id="TimerEventDefinition_1g9devq">
+        <bpmn:timeDuration xsi:type="bpmn:tFormalExpression">PT10M</bpmn:timeDuration>
+      </bpmn:timerEventDefinition>
+    </bpmn:intermediateCatchEvent>
+    <bpmn:intermediateCatchEvent id="Event_waitMessage">
+      <bpmn:incoming>Flow_1ef82fw</bpmn:incoming>
+      <bpmn:outgoing>Flow_00779p4</bpmn:outgoing>
+      <bpmn:messageEventDefinition id="MessageEventDefinition_0a2blep" messageRef="Message_2r1u7b1" />
+    </bpmn:intermediateCatchEvent>
+    <bpmn:serviceTask id="Activity_0gtgxkb" name="Комментарий" camunda:delegateExpression="#{restClient}">
+      <bpmn:extensionElements>
+        <camunda:inputOutput>
+          <camunda:inputParameter name="serviceName">documents</camunda:inputParameter>
+          <camunda:inputParameter name="path">/private/documents/{guid}/comments</camunda:inputParameter>
+          <camunda:inputParameter name="pathParams">
+            <camunda:map>
+              <camunda:entry key="guid">${entityGuid}</camunda:entry>
+            </camunda:map>
+          </camunda:inputParameter>
+          <camunda:inputParameter name="method">POST</camunda:inputParameter>
+          <camunda:inputParameter name="body">
+            <camunda:map>
+              <camunda:entry key="data">${Error}</camunda:entry>
+            </camunda:map>
+          </camunda:inputParameter>
+        </camunda:inputOutput>
+      </bpmn:extensionElements>
+      <bpmn:incoming>Flow_1c6rmq1</bpmn:incoming>
+      <bpmn:outgoing>Flow_1yembom</bpmn:outgoing>
+    </bpmn:serviceTask>
+    <bpmn:exclusiveGateway id="Gateway_13b0d32" default="Flow_0010mbb">
+      <bpmn:incoming>Flow_0qn2r8j</bpmn:incoming>
+      <bpmn:outgoing>Flow_1c6rmq1</bpmn:outgoing>
+      <bpmn:outgoing>Flow_0010mbb</bpmn:outgoing>
+    </bpmn:exclusiveGateway>
+    <bpmn:scriptTask id="Activity_0wf3bmg" name="Создание переменной для комментария" scriptFormat="groovy">
+      <bpmn:incoming>Flow_1p7lu55</bpmn:incoming>
+      <bpmn:outgoing>Flow_0xud52d</bpmn:outgoing>
+      <bpmn:script>execution.setVariable('commentNorecogniz', "Не распознан неформализованный ЭД. Обратитесь в техническую поддержку");
+execution.setVariable("BEEIDP_RECOGNITION_SUCCEDDED", true)
+
+// ---------------------------
+// Получаем RuntimeService через execution
+// ---------------------------
+def runtimeService = execution.getProcessEngineServices().getRuntimeService()
+
+// ---------------------------
+// ID Message Intermediate Catch Event
+// ---------------------------
+def messageEventId = "Event_waitMessage"
+
+// ---------------------------
+// Отменяем все экземпляры activity с этим ID
+// ---------------------------
+runtimeService
+    .createProcessInstanceModification(execution.getProcessInstanceId())
+    .cancelAllForActivity(messageEventId)
+    .execute()
+</bpmn:script>
+    </bpmn:scriptTask>
+    <bpmn:serviceTask id="Activity_0lb6gls" name="Комментарий" camunda:delegateExpression="#{restClient}">
+      <bpmn:extensionElements>
+        <camunda:inputOutput>
+          <camunda:inputParameter name="serviceName">documents</camunda:inputParameter>
+          <camunda:inputParameter name="path">/private/documents/{guid}/comments</camunda:inputParameter>
+          <camunda:inputParameter name="pathParams">
+            <camunda:map>
+              <camunda:entry key="guid">${entityGuid}</camunda:entry>
+            </camunda:map>
+          </camunda:inputParameter>
+          <camunda:inputParameter name="method">POST</camunda:inputParameter>
+          <camunda:inputParameter name="body">
+            <camunda:map>
+              <camunda:entry key="data">${commentNorecogniz}</camunda:entry>
+            </camunda:map>
+          </camunda:inputParameter>
+        </camunda:inputOutput>
+      </bpmn:extensionElements>
+      <bpmn:incoming>Flow_0xud52d</bpmn:incoming>
+      <bpmn:outgoing>Flow_00nufmi</bpmn:outgoing>
+    </bpmn:serviceTask>
+    <bpmn:exclusiveGateway id="Gateway_0shngqf">
+      <bpmn:incoming>Flow_1yjik6m</bpmn:incoming>
+      <bpmn:incoming>Flow_00nufmi</bpmn:incoming>
+      <bpmn:outgoing>Flow_0qn2r8j</bpmn:outgoing>
+    </bpmn:exclusiveGateway>
+    <bpmn:serviceTask id="Activity_0lfz5y0" name="Вызов сервиса pfd" camunda:asyncBefore="true" camunda:exclusive="false" camunda:delegateExpression="#{restClient}">
+      <bpmn:extensionElements>
+        <camunda:inputOutput>
+          <camunda:inputParameter name="serviceName">pfd-service</camunda:inputParameter>
+          <camunda:inputParameter name="path">/private/integration/send-to-beeidp-for-recognition</camunda:inputParameter>
+          <camunda:inputParameter name="method">POST</camunda:inputParameter>
+          <camunda:inputParameter name="body">
+            <camunda:map>
+              <camunda:entry key="beedocs_batch_document_id">${entityGuid}</camunda:entry>
+              <camunda:entry key="initiator_user_login">${initiator}</camunda:entry>
+            </camunda:map>
+          </camunda:inputParameter>
+        </camunda:inputOutput>
+      </bpmn:extensionElements>
+      <bpmn:incoming>Flow_1bysfq4</bpmn:incoming>
+      <bpmn:outgoing>Flow_1ef82fw</bpmn:outgoing>
+    </bpmn:serviceTask>
+    <bpmn:sequenceFlow id="Flow_00779p4" sourceRef="Event_waitMessage" targetRef="Activity_1cu4e3g" />
+    <bpmn:sequenceFlow id="Flow_1yjik6m" sourceRef="Activity_1cu4e3g" targetRef="Gateway_0shngqf" />
+    <bpmn:sequenceFlow id="Flow_1bysfq4" sourceRef="Gateway_10m9qym" targetRef="Activity_0lfz5y0" />
+    <bpmn:sequenceFlow id="Flow_033ojk6" sourceRef="Gateway_10m9qym" targetRef="Event_timerError" />
+    <bpmn:sequenceFlow id="Flow_1p7lu55" sourceRef="Event_timerError" targetRef="Activity_0wf3bmg" />
+    <bpmn:sequenceFlow id="Flow_1ef82fw" sourceRef="Activity_0lfz5y0" targetRef="Event_waitMessage" />
+    <bpmn:sequenceFlow id="Flow_1c6rmq1" sourceRef="Gateway_13b0d32" targetRef="Activity_0gtgxkb">
+      <bpmn:conditionExpression xsi:type="bpmn:tFormalExpression">${BEEIDP_RECOGNITION_SUCCEDDED == false}</bpmn:conditionExpression>
+    </bpmn:sequenceFlow>
+    <bpmn:sequenceFlow id="Flow_1yembom" sourceRef="Activity_0gtgxkb" targetRef="Event_0ed17pl" />
+    <bpmn:sequenceFlow id="Flow_0qn2r8j" sourceRef="Gateway_0shngqf" targetRef="Gateway_13b0d32" />
+    <bpmn:sequenceFlow id="Flow_0xud52d" sourceRef="Activity_0wf3bmg" targetRef="Activity_0lb6gls" />
+    <bpmn:sequenceFlow id="Flow_00nufmi" sourceRef="Activity_0lb6gls" targetRef="Gateway_0shngqf" />
+    <bpmn:intermediateThrowEvent id="Event_1rkyfjw" name="BeeIdpResult">
+      <bpmn:incoming>Flow_0010mbb</bpmn:incoming>
+      <bpmn:linkEventDefinition id="LinkEventDefinition_0s78j6l" name="BeeIdpResult" />
+    </bpmn:intermediateThrowEvent>
+    <bpmn:sequenceFlow id="Flow_1r0fitf" sourceRef="Event_0usvuxs" targetRef="Gateway_10m9qym" />
+    <bpmn:sequenceFlow id="Flow_0010mbb" sourceRef="Gateway_13b0d32" targetRef="Event_1rkyfjw" />
+    <bpmn:sequenceFlow id="Flow_1sen86b" sourceRef="Event_0bxw37p" targetRef="Event_1vxmvti">
+      <bpmn:extensionElements>
+        <camunda:executionListener event="take">
+          <camunda:script scriptFormat="groovy">def statusCode = "DS016_VERIFICATION"
+
+execution.setVariable("BeeDocs_statusCode", statusCode)</camunda:script>
+        </camunda:executionListener>
+      </bpmn:extensionElements>
+    </bpmn:sequenceFlow>
+    <bpmn:intermediateCatchEvent id="Event_0bxw37p" name="VERIFICATION">
+      <bpmn:outgoing>Flow_1sen86b</bpmn:outgoing>
+      <bpmn:linkEventDefinition id="LinkEventDefinition_0v7smv4" name="VERIFICATION" />
+    </bpmn:intermediateCatchEvent>
+    <bpmn:sequenceFlow id="Flow_1bq2i7e" sourceRef="Gateway_0xptpwg" targetRef="Gateway_17lmb53" />
+    <bpmn:exclusiveGateway id="Gateway_0ozuklc" name="Пользователь инициировал удаление?" default="Flow_1tazbye">
+      <bpmn:incoming>Flow_14b0kzj</bpmn:incoming>
+      <bpmn:outgoing>Flow_1tazbye</bpmn:outgoing>
+      <bpmn:outgoing>Flow_10rcr9k</bpmn:outgoing>
+    </bpmn:exclusiveGateway>
+    <bpmn:sequenceFlow id="Flow_1tazbye" name="Да" sourceRef="Gateway_0ozuklc" targetRef="Event_1v8bwlp" />
+    <bpmn:sequenceFlow id="Flow_10rcr9k" name="Нет" sourceRef="Gateway_0ozuklc" targetRef="Activity_18zfxuq">
+      <bpmn:conditionExpression xsi:type="bpmn:tFormalExpression">${taskOutcome != 'TA40_DELETE'}</bpmn:conditionExpression>
+    </bpmn:sequenceFlow>
+    <bpmn:exclusiveGateway id="Gateway_1q3fw0h" default="Flow_07w3bn4">
+      <bpmn:incoming>Flow_0kjei8j</bpmn:incoming>
+      <bpmn:incoming>Flow_0hohjlk</bpmn:incoming>
+      <bpmn:outgoing>Flow_07w3bn4</bpmn:outgoing>
+    </bpmn:exclusiveGateway>
+    <bpmn:exclusiveGateway id="Gateway_0cu8fy4" default="Flow_0hohjlk">
+      <bpmn:incoming>Flow_0z9w5yj</bpmn:incoming>
+      <bpmn:incoming>Flow_0zrvqf4</bpmn:incoming>
+      <bpmn:outgoing>Flow_0hohjlk</bpmn:outgoing>
+      <bpmn:outgoing>Flow_1o091by</bpmn:outgoing>
+    </bpmn:exclusiveGateway>
+    <bpmn:sequenceFlow id="Flow_0hohjlk" sourceRef="Gateway_0cu8fy4" targetRef="Gateway_1q3fw0h" />
+    <bpmn:intermediateThrowEvent id="Event_14n46yr" name="BeeIdp">
+      <bpmn:incoming>Flow_0hptyzr</bpmn:incoming>
+      <bpmn:linkEventDefinition id="LinkEventDefinition_046ekgs" name="BeeIdp" />
+    </bpmn:intermediateThrowEvent>
+    <bpmn:intermediateCatchEvent id="Event_0s9dtw3" name="BeeIdpResult">
+      <bpmn:outgoing>Flow_0kjei8j</bpmn:outgoing>
+      <bpmn:linkEventDefinition id="LinkEventDefinition_00zc092" name="BeeIdpResult" />
+    </bpmn:intermediateCatchEvent>
+    <bpmn:sequenceFlow id="Flow_0kjei8j" sourceRef="Event_0s9dtw3" targetRef="Gateway_1q3fw0h" />
+    <bpmn:scriptTask id="Activity_1tzx57t" name="Поиск документов с типом &#34;Документ ПФД&#34;" camunda:asyncBefore="true" scriptFormat="groovy">
+      <bpmn:incoming>Flow_0envt2z</bpmn:incoming>
+      <bpmn:outgoing>Flow_1wesr5s</bpmn:outgoing>
+      <bpmn:script>import groovy.json.JsonSlurper
+import groovy.json.JsonOutput
+import org.camunda.spin.Spin
+import org.camunda.spin.json.SpinJsonNode
+import com.fasterxml.jackson.databind.ObjectMapper
+
+// Преобразуем SpinJsonNode в объект Groovy
+def json = new JsonSlurper().parseText(documents.toString())
+
+// Фильтруем только элементы с relationCode == "PACKAGE". Запоминаем guid и тип для BEEDOCS-4947
+def mappedDocs = json.data.findAll { it.relationCode == "PACKAGE" }.collect { item -&gt;
+    [
+    guid: item.targetGuid,
+    docType: item.targetType
+  ]
+}
+// Сохраняем в процесс (строкой)
+execution.setVariable("docsWithTypeEdo", mappedDocs);
+
+// Ищем TP_EDO_DOCUMENT
+def edoDocumentGuids = docsWithTypeEdo
+        .findAll { it.docType == "TP_EDO_DOCUMENT" }
+        .collect { item -&gt;
+    [
+        guid: item.guid
+    ]
+}
+
+// Флаг
+execution.setVariable(
+        "hasEdoDocument",
+        !edoDocumentGuids.isEmpty()
+)
+
+// Просто сохраняем List напрямую
+execution.setVariable(
+        "edoDocumentGuids",
+        edoDocumentGuids
+)
+
+execution.setVariable("needBeeidpRecognition", false)</bpmn:script>
+    </bpmn:scriptTask>
+    <bpmn:intermediateCatchEvent id="Event_1k5m0st" name="EXECUTION">
+      <bpmn:outgoing>Flow_0ob3zio</bpmn:outgoing>
+      <bpmn:linkEventDefinition id="LinkEventDefinition_1nhctlu" name="EXECUTION" />
+    </bpmn:intermediateCatchEvent>
+    <bpmn:intermediateThrowEvent id="Event_14p7h6t" name="EXECUTION">
+      <bpmn:incoming>Flow_04n6eee</bpmn:incoming>
+      <bpmn:linkEventDefinition id="LinkEventDefinition_1rtjl2j" name="EXECUTION" />
+    </bpmn:intermediateThrowEvent>
+    <bpmn:sequenceFlow id="Flow_1yfhtls" sourceRef="Gateway_015nzwl" targetRef="Event_0pxmywp">
+      <bpmn:conditionExpression xsi:type="bpmn:tFormalExpression">${taskOutcome == 'TA37_SEND_FOR_PAYMENT'}</bpmn:conditionExpression>
+    </bpmn:sequenceFlow>
+    <bpmn:intermediateThrowEvent id="Event_0pxmywp" name="EXECUTION">
+      <bpmn:incoming>Flow_1yfhtls</bpmn:incoming>
+      <bpmn:linkEventDefinition id="LinkEventDefinition_0n2k6m6" name="EXECUTION" />
+    </bpmn:intermediateThrowEvent>
+    <bpmn:intermediateThrowEvent id="Event_0fdtue3" name="VERIFICATION">
+      <bpmn:incoming>Flow_0wky4c6</bpmn:incoming>
+      <bpmn:linkEventDefinition id="LinkEventDefinition_1wonuo0" name="VERIFICATION" />
+    </bpmn:intermediateThrowEvent>
+    <bpmn:exclusiveGateway id="Gateway_0v9ppag" default="Flow_13qnn6g">
+      <bpmn:incoming>Flow_0zhylxo</bpmn:incoming>
+      <bpmn:incoming>Flow_0gvmhnv</bpmn:incoming>
+      <bpmn:incoming>Flow_14u76ds</bpmn:incoming>
+      <bpmn:incoming>Flow_0u4cplm</bpmn:incoming>
+      <bpmn:outgoing>Flow_13qnn6g</bpmn:outgoing>
+    </bpmn:exclusiveGateway>
+    <bpmn:boundaryEvent id="Event_0fljh60" attachedToRef="Activity_1wq1r4q">
+      <bpmn:outgoing>Flow_1cdzotp</bpmn:outgoing>
+      <bpmn:timerEventDefinition id="TimerEventDefinition_00tibkz">
+        <bpmn:timeDuration xsi:type="bpmn:tFormalExpression">P30M</bpmn:timeDuration>
+      </bpmn:timerEventDefinition>
+    </bpmn:boundaryEvent>
+    <bpmn:sequenceFlow id="Flow_1cdzotp" sourceRef="Event_0fljh60" targetRef="Activity_1e1jlpb" />
+    <bpmn:scriptTask id="Activity_1e1jlpb" name="Признак автозакрытия" scriptFormat="groovy">
+      <bpmn:incoming>Flow_1cdzotp</bpmn:incoming>
+      <bpmn:outgoing>Flow_1366s10</bpmn:outgoing>
+      <bpmn:script>execution.setVariable("autoClosed", true)</bpmn:script>
+    </bpmn:scriptTask>
+    <bpmn:sequenceFlow id="Flow_1366s10" sourceRef="Activity_1e1jlpb" targetRef="Activity_0zjyn7u" />
+    <bpmn:exclusiveGateway id="Gateway_1wm34oi" default="Flow_18ne0vs">
+      <bpmn:incoming>Flow_0gxvhai</bpmn:incoming>
+      <bpmn:outgoing>Flow_18ne0vs</bpmn:outgoing>
+      <bpmn:outgoing>Flow_0twg1zc</bpmn:outgoing>
+      <bpmn:outgoing>Flow_0gt9zwj</bpmn:outgoing>
+    </bpmn:exclusiveGateway>
+    <bpmn:sequenceFlow id="Flow_18ne0vs" sourceRef="Gateway_1wm34oi" targetRef="Gateway_1o9hzhz" />
+    <bpmn:exclusiveGateway id="Gateway_1o9hzhz">
+      <bpmn:incoming>Flow_18ne0vs</bpmn:incoming>
+      <bpmn:incoming>Flow_1tgtn31</bpmn:incoming>
+      <bpmn:outgoing>Flow_1cy6k4n</bpmn:outgoing>
+    </bpmn:exclusiveGateway>
+    <bpmn:sequenceFlow id="Flow_1cy6k4n" sourceRef="Gateway_1o9hzhz" targetRef="Activity_1vb76kh" />
+    <bpmn:userTask id="Activity_0upcdbb" name="${checkContractTaskName}" camunda:asyncBefore="true" camunda:candidateUsers="${loginsContractPFDValue}">
+      <bpmn:documentation>${S(document).prop("data").prop("title").stringValue()}</bpmn:documentation>
+      <bpmn:extensionElements>
+        <camunda:inputOutput>
+          <camunda:inputParameter name="actions">TA043_COMPLETED,TA40_DELETE,TA070_POSTPONE</camunda:inputParameter>
+        </camunda:inputOutput>
+        <camunda:taskListener event="complete">
+          <camunda:script scriptFormat="groovy">task.setVariable("initiator", task.getAssignee())</camunda:script>
+        </camunda:taskListener>
+      </bpmn:extensionElements>
+      <bpmn:incoming>Flow_0h0zwpn</bpmn:incoming>
+      <bpmn:outgoing>Flow_0tn2i3r</bpmn:outgoing>
+    </bpmn:userTask>
+    <bpmn:sequenceFlow id="Flow_0twg1zc" sourceRef="Gateway_1wm34oi" targetRef="Activity_05vf2kp">
+      <bpmn:conditionExpression xsi:type="bpmn:tFormalExpression">${(execution.hasVariable("linkContractPFD") &amp;&amp; linkContractPFD == false &amp;&amp; initiator != "") || (execution.hasVariable("linkContractPFD") &amp;&amp; linkContractPFD == false &amp;&amp; initiator != "" &amp;&amp; hasFilial == false)}</bpmn:conditionExpression>
+    </bpmn:sequenceFlow>
+<!--End Part 1-->
