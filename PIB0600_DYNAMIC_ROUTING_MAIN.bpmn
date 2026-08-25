@@ -723,6 +723,56 @@ filteredSetupStages.each { setupRow -&gt;
     parallelAssignees: targetParallelAssignees
   ]
   setupStages[currentStageCode] = stepConfig
+
+  // ==================================================================================
+  // ПРОВЕРКА НА ПУСТЫЕ ПОЛЯ НАЗНАЧЕНИЯ (ВАЛИДАЦИЯ ИСПОЛНИТЕЛЕЙ)
+  // ==================================================================================
+  def isAssignmentEmpty = false
+  def assignmentErrorDetails = ""
+
+  switch (assignmentType) {
+      case 'PERSONAL':
+          if (targetAssignee == null || targetAssignee.trim() == "") {
+              isAssignmentEmpty = true
+              assignmentErrorDetails = "поле 'assignee' (персональный исполнитель) пусто"
+          }
+          break
+          
+      case 'CANDIDATE_USERS':
+          if (targetCandidateUsers == null || targetCandidateUsers.trim() == "") {
+              isAssignmentEmpty = true
+              assignmentErrorDetails = "поле 'candidateUsers' (пользователи-кандидаты) пусто"
+          }
+          break
+          
+      case 'CANDIDATE_GROUPS':
+      case 'GROUP':
+          if (targetCandidateGroup == null || targetCandidateGroup.trim() == "") {
+              isAssignmentEmpty = true
+              assignmentErrorDetails = "поле 'candidateGroup' (роль/группа кандидатов) пусто"
+          }
+          break
+          
+      case 'PARALLEL':
+          if (targetParallelAssignees == null || targetParallelAssignees.isEmpty()) {
+              isAssignmentEmpty = true
+              assignmentErrorDetails = "коллекция 'parallelAssignees' (параллельные согласующие) пуста"
+          }
+          break
+          
+      default:
+          // Если тип назначения не распознан, но проскочил предыдущие проверки
+          isAssignmentEmpty = true
+          assignmentErrorDetails = "неизвестный тип назначения '${assignmentType}'"
+          break
+  }
+
+  if (isAssignmentEmpty) {
+      errorMessage = "Критическая ошибка маршрутизации: На этапе '${currentStageName}' (${currentStageCode}) ${assignmentErrorDetails}. Обратитесь к Секретарю процесса."
+      log.error("PROCESS [{}]: {}", processInstanceId, errorMessage)
+      throw new BpmnError("ERROR", errorMessage)
+  }
+  // ==================================================================================
 }
 
 // ПОСТОБРАБОТКА: Сквозной динамический перерасчет номеров строк (с одинаковым именем этапа)
